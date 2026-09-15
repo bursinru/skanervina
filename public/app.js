@@ -12,15 +12,56 @@ const paths = {
   'arrow-right': '<path d="M4 12h16m-6-6 6 6-6 6"/>',
   'arrow-left': '<path d="M20 12H4m6-6-6 6 6 6"/>',
   'arrow-up-right': '<path d="M6 18 18 6M6 6h12v12"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 5 5"/>',
   x: '<path d="m6 6 12 12M6 18 18 6"/>',
   check: '<path d="m5 12 4 4L19 6"/>'
 };
 const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.wine}</svg>`;
 document.querySelectorAll('[data-icon]').forEach(el => el.innerHTML = icon(el.dataset.icon));
 const escape = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const catalogAssets = {
+  region: {
+    'крым': 'https://api.vino-svoe.ru/v1/img/str-api/88/88/resize/uploads/krym_18db39fc91.webp',
+    'кубань': 'https://api.vino-svoe.ru/v1/img/str-api/88/88/resize/uploads/kuban_3a7a0211ba.webp'
+  },
+  grape: {
+    'мальвазия': 'https://api.vino-svoe.ru/v1/img/str-api/88/88/resize/uploads/Malvaziya_2_6fa1f30062.webp',
+    'первенец магарача': 'https://api.vino-svoe.ru/v1/img/str-api/44/44/resize/uploads/Sharello1_4238e7b92f.webp'
+  },
+  dish: {
+    'блюда из птицы': 'https://api.vino-svoe.ru/v1/img/str-api/144/144/resize/uploads/ptica_9a6c7e3ea1.webp',
+    'птица': 'https://api.vino-svoe.ru/v1/img/str-api/144/144/resize/uploads/ptica_9a6c7e3ea1.webp',
+    'овощи гриль': 'https://api.vino-svoe.ru/v1/img/str-api/144/144/resize/uploads/ovoshi_grill_7539c7f339.webp',
+    'овощи на гриле': 'https://api.vino-svoe.ru/v1/img/str-api/144/144/resize/uploads/ovoshi_grill_7539c7f339.webp',
+    'легкие закуски': 'https://api.vino-svoe.ru/v1/img/str-api/144/144/resize/uploads/legkie_zakuski_e5a2dedbf7.webp'
+  }
+};
+const normalizeCatalogValue = value => String(value ?? '').trim().toLocaleLowerCase('ru-RU').replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+function catalogAsset(type, value) {
+  const normalized = normalizeCatalogValue(value);
+  if (!normalized) return '';
+  const assets = catalogAssets[type] || {};
+  const key = Object.keys(assets).find(candidate => normalized === candidate || normalized.includes(candidate) || candidate.includes(normalized));
+  return key ? safeImage(assets[key]) : '';
+}
+function inferWineColor(wine) {
+  const value = normalizeCatalogValue(`${wine.color || ''} ${wine.category || ''}`);
+  if (value.includes('красн')) return 'Красное';
+  if (value.includes('оранж')) return 'Оранжевое';
+  if (value.includes('розов')) return 'Розовое';
+  if (value.includes('бел')) return 'Белое';
+  return wine.color || '';
+}
+function colorTone(color) {
+  const value = normalizeCatalogValue(color);
+  if (value.includes('красн')) return 'red';
+  if (value.includes('оранж')) return 'orange';
+  if (value.includes('розов')) return 'rose';
+  return 'white';
+}
 const example = {
   slug: 'fanagoriya-blanc-de-blancs-shardone-beloe-bryut-12', name: 'Blanc de Blancs', winery: 'Фанагория',
-  category: 'Игристое белое · Брют', region: 'Кубань', grapes: ['Шардоне'], image_url: '/assets/blanc-de-blancs.webp',
+  category: 'Игристое белое · Брют', color: 'Белое', region: 'Кубань', grapes: ['Шардоне'], image_url: '/assets/blanc-de-blancs.webp',
   summary: 'Свежее, изящное вино с нотами белых цветов, персика и грейпфрута. Сбалансированная кислотность и лёгкая сливочность во вкусе.',
   description: 'Игра пузырьков изящная и утонченная — непрерывный жемчужный перляж. Аромат элегантный и тонкий, завораживающий. Вначале раскрывается нотами легких белых цветов и прохладой цветущего утреннего сада. Затем проявляются сочные оттенки мякоти белых фруктов и розового персика, свежие нотки грейпфрута и легкий травяной акцент. Фоном звучит тонкий оттенок миндального пралине. Вкус изящный, свежий и ажурный. Прекрасно сбалансированная, стройная кислотность отлично гармонирует с тонкой сливочностью и ведет к чистому и стройному послевкусию. Идеальный аперитив.',
   aromas: ['Белые цветы', 'Персик', 'Грейпфрут', 'Миндаль'], source: 'Описание из каталога «Своё Вино»', demo: true
@@ -28,6 +69,8 @@ const example = {
 let stream = null, cameraGeneration = 0, photo = null, photoUrl = null, controller = null, currentWine = null, toastTimer;
 let saved = [];
 try { const raw = JSON.parse(localStorage.getItem('svoe-wines') || '[]'); if (Array.isArray(raw)) saved = raw.filter(w => w && typeof w.slug === 'string' && typeof w.name === 'string').slice(0,100); } catch {}
+let ratings = {};
+try { const raw = JSON.parse(localStorage.getItem('svoe-ratings') || '{}'); if (raw && typeof raw === 'object') ratings = raw; } catch {}
 const syncSavedCount = () => $('saved-count').textContent = saved.length;
 syncSavedCount();
 function notice(message) { $('notice').textContent = message; $('notice').hidden = !message; }
@@ -99,6 +142,7 @@ function formatRating(value) {
   if (!Number.isFinite(rating) || rating < 0 || rating > 5) return '';
   return `${rating.toFixed(1).replace(/\.0$/, '')} / 5`;
 }
+const ratingGlass = () => `<svg viewBox="0 0 56 72" aria-hidden="true"><path class="rating-glass-body" d="M11 7h34l-3 22c-1 8-6 13-14 13s-13-5-14-13L11 7Z"/><path d="M11 7h34l-3 22c-1 8-6 13-14 13s-13-5-14-13L11 7Z" fill="none"/><path d="M12 26h32M28 42v20M18 64h20"/></svg>`;
 $('recognize').onclick = async () => {
   if (!photo || controller) return;
   const endpoint = window.SCANNER_CONFIG?.recognitionEndpoint;
@@ -124,19 +168,51 @@ function showWine(wine) {
   const image = resolveImageUrl(wine.image_url, wine.photo_name || wine.image_name || wine.photoName);
   const rating = formatRating(wine.public_rating);
   const dishes = Array.isArray(wine.dishes) ? wine.dishes.filter(Boolean) : [];
+  const grapes = Array.isArray(wine.grapes) ? wine.grapes.filter(Boolean) : (wine.grapes ? [wine.grapes] : []);
+  const wineColor = inferWineColor(wine);
+  const regionImage = safeImage(wine.region_image_url) || catalogAsset('region', wine.region);
+  const grapeImageUrls = Array.isArray(wine.grape_image_urls) ? wine.grape_image_urls : [];
+  const grapeImages = grapes.map((grape, index) => ({ name: grape, image: safeImage(grapeImageUrls[index] || (index === 0 ? wine.grape_image_url : '')) || catalogAsset('grape', grape) })).filter(item => item.image);
+  const visualFacts = [
+    regionImage ? `<article class="visual-fact"><img src="${escape(regionImage)}" alt="" loading="lazy"><div><small>РЕГИОН</small><strong>${escape(wine.region)}</strong></div></article>` : '',
+    ...grapeImages.map(item => `<article class="visual-fact"><img src="${escape(item.image)}" alt="" loading="lazy"><div><small>СОРТ ВИНОГРАДА</small><strong>${escape(item.name)}</strong></div></article>`),
+    (wine.category || wineColor) ? `<article class="visual-fact visual-fact-color"><span class="color-dot color-dot-${colorTone(wineColor)}"></span><div><small>КАТЕГОРИЯ И ЦВЕТ</small><strong>${escape(wine.category || 'Категория не указана')}</strong>${wineColor ? `<em>${escape(wineColor)}</em>` : ''}</div></article>` : ''
+  ].filter(Boolean).join('');
+  const dishImageUrls = Array.isArray(wine.dish_image_urls) ? wine.dish_image_urls : [];
+  const dishCards = dishes.map((dish, index) => {
+    const dishImage = safeImage(dishImageUrls[index]) || catalogAsset('dish', dish);
+    return `<article class="dish-card">${dishImage ? `<img src="${escape(dishImage)}" alt="" loading="lazy">` : '<span class="dish-placeholder">Вино и еда</span>'}<strong>${escape(dish)}</strong></article>`;
+  }).join('');
   $('result-screen').innerHTML = `
     <div class="result-top"><button class="text-button" id="back-to-scanner">${icon('arrow-left')} К сканеру</button><span class="demo-badge">${wine.demo ? 'Пример карточки · не результат сканирования' : 'Вино найдено'}</span></div>
     <div class="result-layout"><div class="wine-portrait">${image ? `<img src="${escape(image)}" alt="${escape(wine.name)}"/>` : '<span>Фото пока нет</span>'}<span class="portrait-caption">СВОЁ ВИНО · РОССИЙСКИЕ ВИНОДЕЛЬНИ</span></div>
     <div class="wine-details"><p class="eyebrow">${escape(wine.winery)}</p><h1>${escape(wine.name)}</h1><p class="wine-category">${escape(wine.category || '')}${wine.region ? ' · ' + escape(wine.region) : ''}</p>
-    <div class="rating-budget"><div class="data-block"><span>НАРОДНЫЙ РЕЙТИНГ</span><strong>${escape(rating || 'Пока нет данных')}</strong><small>${rating ? 'По публичному каталогу «Своё Вино»' : 'Рейтинг появится с источником'}</small></div><div class="data-block"><label for="shelf-price">ВАША ЦЕНА С ПОЛКИ</label><div class="price-input"><input id="shelf-price" inputmode="numeric" type="number" min="0" max="1000000" step="1" placeholder="Укажите цену" aria-label="Цена с полки в рублях"/><span>₽</span></div><small>Можно сохранить вместе с вином</small></div></div>
-    <p class="wine-summary">${escape(wine.summary || wine.description || 'Описание пока не добавлено.')}</p><div class="taste-tags">${(Array.isArray(wine.aromas) ? wine.aromas : []).map(tag => `<span>${escape(tag)}</span>`).join('')}</div><p class="source-note">${escape(wine.source || 'Данные сервиса распознавания')}</p>${dishes.length ? `<p class="source-note">Сочетания: ${dishes.map(dish => escape(dish)).join(', ')}</p>` : ''}
-    <div class="wine-facts"><span><small>СОРТ ВИНОГРАДА</small>${escape(Array.isArray(wine.grapes) ? wine.grapes.join(', ') : wine.grapes || 'Не указан')}</span><span><small>РЕГИОН</small>${escape(wine.region || 'Не указан')}</span>${wine.temperature ? `<span><small>ПОДАВАТЬ</small>${escape(wine.temperature)}</span>` : ''}${wine.alcohol ? `<span><small>КРЕПОСТЬ</small>${escape(wine.alcohol)}</span>` : ''}</div>
+    <div class="catalog-rating data-block"><span>НАРОДНЫЙ РЕЙТИНГ</span><strong>${escape(rating || 'Пока нет данных')}</strong><small>${rating ? 'По публичному каталогу «Своё Вино»' : 'Рейтинг появится с источником'}</small></div>
+    <section class="user-rating" aria-labelledby="user-rating-title"><h2 id="user-rating-title">Поставь свою оценку</h2><div class="rating-options" role="radiogroup" aria-label="Оценка вина">${[1,2,3,4,5].map(value => `<button class="rating-option" type="button" role="radio" aria-checked="false" aria-label="${value} из 5" data-user-rating="${value}"><span class="rating-glass">${ratingGlass()}</span></button>`).join('')}</div><p class="rating-status" id="rating-status">Нажмите на бокал, чтобы оценить</p></section>
+    ${visualFacts ? `<section class="catalog-visuals" aria-label="Характеристики из каталога"><div class="visual-facts">${visualFacts}</div></section>` : ''}
+    <p class="wine-summary">${escape(wine.summary || wine.description || 'Описание пока не добавлено.')}</p><div class="taste-tags">${(Array.isArray(wine.aromas) ? wine.aromas : []).map(tag => `<span>${escape(tag)}</span>`).join('')}</div><p class="source-note">${escape(wine.source || 'Данные сервиса распознавания')}</p>
+    <div class="wine-facts"><span><small>СОРТ ВИНОГРАДА</small>${escape(grapes.join(', ') || 'Не указан')}</span><span><small>РЕГИОН</small>${escape(wine.region || 'Не указан')}</span>${wine.temperature ? `<span><small>ПОДАВАТЬ</small>${escape(wine.temperature)}</span>` : ''}${wine.alcohol ? `<span><small>КРЕПОСТЬ</small>${escape(wine.alcohol)}</span>` : ''}</div>
     <div class="result-actions"><button class="button primary" id="save-wine">${icon('bookmark')} Сохранить вино</button><button class="button secondary" id="scan-again">${icon('camera')} Ещё одно вино</button></div></div></div>
+    ${dishes.length ? `<section class="dish-pairings"><div class="dish-pairings-heading"><div>${icon('utensils')}<h2>Сочетание с блюдами</h2></div><span>Из каталога «Своё Вино»</span></div><div class="dish-grid">${dishCards}</div></section>` : ''}
     ${wine.demo ? `<section class="pairings"><div class="pairings-heading">${icon('utensils')}<h2>Что у вас на ужин?</h2></div><p class="muted">Выберите блюдо — подскажем, как оно сочетается с этим стилем вина.</p><div class="food-buttons"><button data-food="fish" aria-pressed="true">Рыба и морепродукты</button><button data-food="cheese" aria-pressed="false">Мягкий сыр</button><button data-food="salad" aria-pressed="false">Лёгкий салат</button><button data-food="steak" aria-pressed="false">Стейк</button><button data-food="dessert" aria-pressed="false">Десерт</button></div><p class="pairing-explanation" id="pairing-explanation"></p><p class="source-note">Общая рекомендация для стиля «белое игристое брют», а не экспертная оценка этой бутылки.</p></section>` : ''}
     <details class="description"><summary>Полное описание вина</summary><p>${escape(wine.description || 'Описание пока не добавлено.')}</p></details>`;
   $('back-to-scanner').onclick = $('scan-again').onclick = backToScanner;
-  const existing = saved.find(w => w.slug === wine.slug); if (existing?.price != null) $('shelf-price').value = existing.price;
   $('save-wine').onclick = saveWine;
+  const setUserRating = value => {
+    const normalized = Number.isInteger(value) && value >= 0 && value <= 5 ? value : 0;
+    if (normalized) {
+      ratings[wine.slug] = normalized;
+      try { localStorage.setItem('svoe-ratings', JSON.stringify(ratings)); } catch { toast('Оценка показана только до закрытия страницы.'); }
+    }
+    document.querySelectorAll('[data-user-rating]').forEach(button => {
+      const buttonValue = Number(button.dataset.userRating);
+      button.classList.toggle('filled', buttonValue <= normalized);
+      button.setAttribute('aria-checked', String(buttonValue === normalized));
+    });
+    $('rating-status').textContent = normalized ? `Ваша оценка: ${normalized} из 5` : 'Нажмите на бокал, чтобы оценить';
+  };
+  document.querySelectorAll('[data-user-rating]').forEach(button => button.onclick = () => setUserRating(Number(button.dataset.userRating)));
+  setUserRating(Number(ratings[wine.slug]) || 0);
   if (wine.demo) {
     const explanations = {
       fish:'Хорошая пара: свежесть брюта поддержит нежный вкус рыбы и морепродуктов. Выберите лёгкую подачу с лимоном, без сладкого или тяжёлого соуса.',
@@ -154,14 +230,12 @@ function backToScanner() { $('result-screen').hidden = true; $('scanner-screen')
 $('show-example').onclick = () => showWine(example);
 function persist() { try { localStorage.setItem('svoe-wines', JSON.stringify(saved)); syncSavedCount(); return true; } catch { toast('Не удалось сохранить: хранилище браузера недоступно.'); return false; } }
 function saveWine() {
-  const input = $('shelf-price'); if (!input.checkValidity()) { input.reportValidity(); return; }
-  const price = input.value === '' ? null : Number(input.value);
-  const item = { ...currentWine, price }; const previous = [...saved];
+  const item = { ...currentWine }; const previous = [...saved];
   saved = [item, ...saved.filter(w => w.slug !== item.slug)].slice(0,100);
   if (persist()) { $('save-wine').innerHTML = icon('check') + ' Сохранено'; toast('Вино сохранено в «Мои вина»'); } else saved = previous;
 }
 function renderSaved() {
-  $('saved-list').innerHTML = saved.length ? saved.map((w,i) => { const image = resolveImageUrl(w.image_url, w.photo_name || w.image_name || w.photoName); return `<div class="saved-item">${image ? `<img src="${escape(image)}" alt=""/>` : ''}<button data-saved="${i}">${escape(w.name)}<small>${escape(w.winery)}${w.price != null ? ' · ' + escape(w.price) + ' ₽' : ''}${w.demo ? ' · пример' : ''}</small></button><button class="remove-saved" data-remove="${i}" aria-label="Удалить ${escape(w.name)}">Удалить</button></div>`; }).join('') : '<p class="muted">Здесь будут вина, к которым захочется вернуться. Откройте карточку и нажмите «Сохранить вино».</p>';
+  $('saved-list').innerHTML = saved.length ? saved.map((w,i) => { const image = resolveImageUrl(w.image_url, w.photo_name || w.image_name || w.photoName); return `<div class="saved-item">${image ? `<img src="${escape(image)}" alt=""/>` : ''}<button data-saved="${i}">${escape(w.name)}<small>${escape(w.winery)}${w.demo ? ' · пример' : ''}</small></button><button class="remove-saved" data-remove="${i}" aria-label="Удалить ${escape(w.name)}">Удалить</button></div>`; }).join('') : '<p class="muted">Здесь будут вина, к которым захочется вернуться. Откройте карточку и нажмите «Сохранить вино».</p>';
   document.querySelectorAll('[data-saved]').forEach(b => b.onclick = () => { $('saved-dialog').close(); showWine(saved[Number(b.dataset.saved)]); });
   document.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => { const previous = [...saved]; saved.splice(Number(b.dataset.remove),1); if (!persist()) saved = previous; renderSaved(); });
 }

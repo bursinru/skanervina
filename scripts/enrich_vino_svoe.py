@@ -54,12 +54,13 @@ def fetch_html(url: str, timeout: int = 45, retries: int = 5) -> str:
     raise RuntimeError(f"Could not fetch {url}: {last_error}")
 
 
-def image_url_from_source(source_url: str) -> str:
+def image_url_from_source(source_url: str, size: int = 800) -> str:
     path = unquote(urlparse(source_url).path)
     match = re.search(r"/uploads/([^/]+)$", path)
     if not match:
         return ""
-    return IMAGE_BASE_URL + quote(match.group(1), safe="")
+    base = IMAGE_BASE_URL.replace("/800/800/", f"/{size}/{size}/")
+    return base + quote(match.group(1), safe="")
 
 
 def first_image_url(node) -> str:
@@ -146,6 +147,29 @@ def labeled_cards(soup: BeautifulSoup) -> Dict[str, str]:
     return result
 
 
+def detail_image_for_labels(soup: BeautifulSoup, labels: Iterable[str], size: int) -> str:
+    wanted = {clean_text(label) for label in labels}
+    selectors = ".wine-detail-info__detail, .wine-hero-block__card, .wine-mobile-hero-block__card"
+    for block in soup.select(selectors):
+        label_node = block.select_one(
+            ".wine-detail-info__detail-label, .wine-hero-block__card-label"
+        )
+        if label_node and clean_text(label_node.get_text(" ", strip=True)) in wanted:
+            return image_url_from_source(first_image_url(block), size)
+    return ""
+
+
+def parse_dish_images(soup: BeautifulSoup) -> List[str]:
+    images: List[str] = []
+    for item in soup.select(".wine-dish-item"):
+        name_node = item.select_one(".wine-dish-item__name")
+        if not name_node:
+            continue
+        image_url = image_url_from_source(first_image_url(item), 144)
+        images.append(image_url)
+    return images
+
+
 def parse_detail_page(html: str, record: Dict[str, str]) -> Dict[str, str]:
     soup = BeautifulSoup(html, "html.parser")
     result = dict(record)
@@ -162,9 +186,11 @@ def parse_detail_page(html: str, record: Dict[str, str]) -> Dict[str, str]:
     details = labeled_details(soup)
     category_values = details.get("Категория и цвет", [])
     result["region"] = (details.get("Регион") or [""])[0]
-    result["grapes"] = (details.get("Сорта винограда") or [""])[0]
+    result["grapes"] = (details.get("Сорта винограда") or details.get("Сорт винограда") or [""])[0]
     result["category"] = category_values[0] if category_values else ""
     result["color"] = category_values[1] if len(category_values) > 1 else ""
+    result["region_image_url"] = detail_image_for_labels(soup, ["Регион"], 88)
+    result["grape_image_url"] = detail_image_for_labels(soup, ["Сорт винограда", "Сорта винограда"], 88)
 
     cards = labeled_cards(soup)
     result["temperature"] = cards.get("Температура подачи", "")
@@ -173,6 +199,7 @@ def parse_detail_page(html: str, record: Dict[str, str]) -> Dict[str, str]:
         list(dict.fromkeys(clean_text(node.get_text(" ", strip=True)) for node in soup.select(".wine-dish-item__name") if clean_text(node.get_text(" ", strip=True)))),
         ensure_ascii=False,
     )
+    result["dish_image_urls_json"] = json.dumps(parse_dish_images(soup), ensure_ascii=False)
     description_node = soup.select_one(".wine-page__description")
     result["description"] = description_node.get_text("\n", strip=True) if description_node else ""
     bottle_node = soup.select_one(".wine-hero-block__bottle, .wine-mobile-hero-block__bottle-image")
@@ -212,12 +239,15 @@ def enrich_rows(rows: Iterable[Dict[str, str]], site_records: Dict[str, Dict[str
         "svoe_vino_public_rating",
         "svoe_vino_quality_rating",
         "svoe_vino_region",
+        "svoe_vino_region_image_url",
         "svoe_vino_grapes",
+        "svoe_vino_grape_image_url",
         "svoe_vino_category",
         "svoe_vino_color",
         "svoe_vino_temperature",
         "svoe_vino_alcohol",
         "svoe_vino_dishes_json",
+        "svoe_vino_dish_image_urls_json",
         "svoe_vino_description",
         "svoe_vino_image_url",
         "svoe_vino_scraped_at",
@@ -238,12 +268,15 @@ def enrich_rows(rows: Iterable[Dict[str, str]], site_records: Dict[str, Dict[str
                     "svoe_vino_public_rating": site.get("public_rating", ""),
                     "svoe_vino_quality_rating": site.get("quality_rating", ""),
                     "svoe_vino_region": site.get("region", ""),
+                    "svoe_vino_region_image_url": site.get("region_image_url", ""),
                     "svoe_vino_grapes": site.get("grapes", ""),
+                    "svoe_vino_grape_image_url": site.get("grape_image_url", ""),
                     "svoe_vino_category": site.get("category", ""),
                     "svoe_vino_color": site.get("color", ""),
                     "svoe_vino_temperature": site.get("temperature", ""),
                     "svoe_vino_alcohol": site.get("alcohol", ""),
                     "svoe_vino_dishes_json": site.get("dishes_json", "[]"),
+                    "svoe_vino_dish_image_urls_json": site.get("dish_image_urls_json", "[]"),
                     "svoe_vino_description": site.get("description", ""),
                     "svoe_vino_image_url": site.get("image_url", ""),
                     "svoe_vino_scraped_at": scraped_at,
@@ -313,7 +346,9 @@ def main() -> int:
     for field in [
         "svoe_vino_source_url", "svoe_vino_public_rating", "svoe_vino_quality_rating",
         "svoe_vino_region", "svoe_vino_grapes", "svoe_vino_category", "svoe_vino_color",
+        "svoe_vino_region_image_url", "svoe_vino_grape_image_url",
         "svoe_vino_temperature", "svoe_vino_alcohol", "svoe_vino_dishes_json",
+        "svoe_vino_dish_image_urls_json",
         "svoe_vino_description", "svoe_vino_image_url", "svoe_vino_scraped_at",
         "svoe_vino_scrape_status",
     ]:

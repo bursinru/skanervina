@@ -14,9 +14,18 @@
 <body>
   <a class="skip-link" href="#main">К сканеру</a>
   <header class="header">
-    <a class="brand" href="/scanner" aria-label="Своё Вино — сканер"><span class="brand-mark" data-icon="wine"></span><span><strong>Своё Вино</strong><small>От Россельхозбанка</small></span></a>
-    <nav aria-label="Основная навигация"><a class="active" href="/scanner">Сканер вина</a><a href="https://vino-svoe.ru/">Открыть портал <span data-icon="arrow-up-right"></span></a></nav>
-    <button class="saved-trigger" id="saved-open"><span data-icon="bookmark"></span><span>Мои вина</span><b id="saved-count">0</b></button>
+    <a class="brand" href="/scanner" aria-label="Своё Вино — сканер"><img src="/assets/svoe-vino-logo.svg" alt="Своё Вино" /></a>
+    <nav aria-label="Основная навигация">
+      <a href="https://vino-svoe.ru/articles">Истории в бокале</a>
+      <a href="https://vino-svoe.ru/wines">Свои вина</a>
+      <a href="https://vino-svoe.ru/events">События</a>
+      <a href="https://vino-svoe.ru/wineries">Винодельни и регионы</a>
+      <a href="https://vino-svoe.ru/surveys/vinnyj-barometr">Винный Барометр</a>
+    </nav>
+    <div class="header-actions">
+      <button class="saved-trigger" id="saved-open" aria-label="Мои вина"><span data-icon="bookmark"></span><span class="saved-label">Мои вина</span><b id="saved-count">0</b></button>
+      <button class="search-trigger" type="button" aria-label="Поиск"><span data-icon="search"></span></button>
+    </div>
   </header>
   <main id="main">
     <section id="scanner-screen">
@@ -38,7 +47,7 @@
         </section>
         <aside class="scanner-aside">
           <div class="intro"><span class="section-number">ЗНАКОМСТВО БЕЗ СЛОЖНЫХ СЛОВ</span><h2>Что скрывается<br>за этикеткой?</h2><p>Узнайте характер вина, прежде чем<br class="desktop-break"> наполнить бокал.</p></div>
-          <div class="benefits"><div><span class="benefit-icon" data-icon="wine"></span><section><h3>Вкус, который можно представить</h3><p>От свежих цитрусов до спелых ягод. <br>Понятно, даже если вы не сомелье.</p></section></div><div><span class="benefit-icon" data-icon="utensils"></span><section><h3>Идеальная компания к ужину</h3><p>Сочетания с блюдами и подсказки<br>для вашего вечера.</p></section></div><div><span class="benefit-icon" data-icon="star"></span><section><h3>Оценки и ваш бюджет</h3><p>Рейтинг с источником, когда он есть. <br>Цена с полки — чтобы выбрать своё.</p></section></div></div>
+          <div class="benefits"><div><span class="benefit-icon" data-icon="wine"></span><section><h3>Вкус, который можно представить</h3><p>От свежих цитрусов до спелых ягод. <br>Понятно, даже если вы не сомелье.</p></section></div><div><span class="benefit-icon" data-icon="utensils"></span><section><h3>Идеальная компания к ужину</h3><p>Сочетания с блюдами и подсказки<br>для вашего вечера.</p></section></div><div><span class="benefit-icon" data-icon="star"></span><section><h3>Оценки и ваш выбор</h3><p>Народный рейтинг и ваша оценка.<br>Выбирайте вино по своему вкусу.</p></section></div></div>
           <button class="example-card" id="show-example"><span class="example-image"><img src="/assets/blanc-de-blancs.webp" alt="" /></span><span><small>ПОСМОТРИТЕ, КАК ЭТО РАБОТАЕТ</small><strong>Фанагория<br>Blanc de Blancs</strong><span class="example-link">Открыть пример карточки <span data-icon="arrow-right"></span></span></span></button>
         </aside>
       </div>
@@ -46,7 +55,20 @@
     </section>
     <section id="result-screen" hidden tabindex="-1"></section>
   </main>
-  <footer><span>Своё Вино <i>·</i> Открывайте российское</span><span>18+ <i>·</i> Чрезмерное употребление алкоголя вредит вашему здоровью</span></footer>
+  <footer class="site-footer">
+    <nav class="footer-links" aria-label="Ссылки в подвале">
+      <a href="https://forms.yandex.ru/cloud/6911d889e010db6b5d3f3410/">Добавить винодельню в каталог</a>
+      <a href="https://www.rshb.ru/pd-policy#cookie">Политика использования Cookies</a>
+      <a href="https://www.rshb.ru/pd-policy">Политика обработки персональных данных</a>
+    </nav>
+    <div class="footer-meta">
+      <span class="footer-copyright">© Своё Вино, Россельхозбанк</span>
+      <a class="footer-bank-logo" href="https://www.rshb.ru/" aria-label="Россельхозбанк">
+        <span aria-hidden="true"><i></i><i></i><i></i></span><strong>РСХБ</strong>
+      </a>
+      <div class="footer-disclaimer"><span>Чрезмерное употребление<br>алкоголя вредит вашему<br>здоровью</span><strong>18+</strong></div>
+    </div>
+  </footer>
   <dialog id="saved-dialog"><div class="dialog-heading"><h2>Мои вина</h2><button class="icon-button" id="saved-close" aria-label="Закрыть"><span data-icon="x"></span></button></div><p class="muted">Сохранены в этом браузере.</p><div id="saved-list"></div></dialog>
   <div id="toast" class="toast" role="status" hidden></div>
 </body>

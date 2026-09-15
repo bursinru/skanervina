@@ -21,9 +21,12 @@ class WineCard(BaseModel):
     public_rating: Optional[float] = None
     quality_rating: Optional[float] = None
     color: str = ""
+    region_image_url: Optional[str] = None
+    grape_image_url: Optional[str] = None
     temperature: str = ""
     alcohol: str = ""
     dishes: list[str] = Field(default_factory=list)
+    dish_image_urls: list[str] = Field(default_factory=list)
     source_url: Optional[str] = None
     source: str = "Каталог «Своё Вино»"
 

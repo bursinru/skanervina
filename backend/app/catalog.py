@@ -46,6 +46,17 @@ def parse_dishes(value: object) -> List[str]:
     return [str(item).strip() for item in parsed if str(item).strip()]
 
 
+def parse_image_urls(value: object) -> List[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return []
+    return [str(item).strip() for item in parsed if str(item).strip()]
+
+
 @dataclass(frozen=True)
 class CatalogWine:
     slug: str
@@ -61,14 +72,19 @@ class CatalogWine:
     public_rating: Optional[float] = None
     quality_rating: Optional[float] = None
     color: str = ""
+    region_image_url: Optional[str] = None
+    grape_image_url: Optional[str] = None
     temperature: str = ""
     alcohol: str = ""
     dishes: Optional[List[str]] = None
+    dish_image_urls: Optional[List[str]] = None
     source_url: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.dishes is None:
             object.__setattr__(self, "dishes", [])
+        if self.dish_image_urls is None:
+            object.__setattr__(self, "dish_image_urls", [])
 
     @property
     def search_text(self) -> str:
@@ -103,9 +119,12 @@ class CatalogWine:
             "public_rating": self.public_rating,
             "quality_rating": self.quality_rating,
             "color": self.color,
+            "region_image_url": self.region_image_url,
+            "grape_image_url": self.grape_image_url,
             "temperature": self.temperature,
             "alcohol": self.alcohol,
             "dishes": self.dishes,
+            "dish_image_urls": self.dish_image_urls,
             "source_url": self.source_url,
             "source": "Каталог «Своё Вино»",
         }
@@ -167,9 +186,12 @@ class WineCatalog:
                     public_rating=optional_float(row.get("svoe_vino_public_rating")),
                     quality_rating=optional_float(row.get("svoe_vino_quality_rating")),
                     color=str(row.get("svoe_vino_color") or "").strip(),
+                    region_image_url=str(row.get("svoe_vino_region_image_url") or "").strip() or None,
+                    grape_image_url=str(row.get("svoe_vino_grape_image_url") or "").strip() or None,
                     temperature=str(row.get("svoe_vino_temperature") or "").strip(),
                     alcohol=str(row.get("svoe_vino_alcohol") or "").strip(),
                     dishes=parse_dishes(row.get("svoe_vino_dishes_json")),
+                    dish_image_urls=parse_image_urls(row.get("svoe_vino_dish_image_urls_json")),
                     source_url=str(row.get("svoe_vino_source_url") or "").strip() or None,
                 )
             )
