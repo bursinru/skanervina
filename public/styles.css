@@ -308,3 +308,25 @@ body{background:#fffdfb}
   #scanner-screen .scanner-controls{padding-top:12px}
   #scanner-screen .scanner-controls .button{min-height:54px;font-size:15px}
 }
+
+/* Footer follows the primary site's spacious legal and brand layout. */
+.site-footer{display:block;max-width:none;margin:80px 32px 0;padding:38px 32px 104px;border-top:1px solid var(--line);color:#9b9690;font-size:16px}
+.footer-links{display:flex;align-items:flex-start;flex-wrap:wrap;gap:20px clamp(34px,5vw,80px);margin:0;padding:0}
+.footer-links a{color:inherit;line-height:1.35;transition:color .2s ease}
+.footer-links a:hover{color:var(--header-ink)}
+.footer-meta{position:relative;min-height:190px;padding-top:32px}
+.footer-copyright{display:block;line-height:1.35}
+.footer-bank-logo{position:absolute;left:0;bottom:0;display:block;width:180px;height:auto;max-height:44px;object-fit:contain;object-position:left bottom}
+.footer-disclaimer{position:absolute;right:0;bottom:0;display:flex;align-items:flex-end;gap:24px;width:auto;height:auto;max-height:none;text-align:right;color:inherit;line-height:1.15}
+.footer-disclaimer span{font-size:14px}
+.footer-disclaimer img{display:block;width:44px;height:auto;flex:0 0 44px}
+@media(max-width:720px){
+  .site-footer{margin:64px 20px 0;padding:32px 0 96px;font-size:14px}
+  .footer-links{flex-direction:column;gap:17px}
+  .footer-meta{min-height:0;display:flex;flex-direction:column;gap:34px;padding-top:34px}
+  .footer-bank-logo,.footer-disclaimer{position:static}
+  .footer-bank-logo{align-self:flex-start;width:168px;max-height:42px}
+  .footer-disclaimer{align-self:flex-end;gap:18px;width:auto;max-width:100%;max-height:none}
+  .footer-disclaimer span{font-size:12px}
+  .footer-disclaimer img{width:44px;flex-basis:44px}
+}
