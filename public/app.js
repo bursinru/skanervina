@@ -17,13 +17,7 @@ const paths = {
   x: '<path d="m6 6 12 12M6 18 18 6"/>',
   check: '<path d="m5 12 4 4L19 6"/>'
 };
-const imageIcons = {
-  bookmark: '/assets/ui/bookmark.png',
-  compare: '/assets/ui/compare.png'
-};
-const icon = (name) => imageIcons[name]
-  ? `<img class="ui-icon ui-icon-${name}" src="${imageIcons[name]}" alt="" aria-hidden="true">`
-  : `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.wine}</svg>`;
+const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.wine}</svg>`;
 document.querySelectorAll('[data-icon]').forEach(el => el.innerHTML = icon(el.dataset.icon));
 const escape = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const catalogAssets = {
@@ -292,7 +286,7 @@ function formatRating(value) {
   if (!Number.isFinite(rating) || rating < 0 || rating > 5) return '';
   return `${rating.toFixed(1).replace(/\.0$/, '')} / 5`;
 }
-const ratingGlass = () => '<img class="rating-glass-image" src="/assets/ui/rating-glass.png" alt="" aria-hidden="true">';
+const ratingGlass = () => '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="rating-glass-body" d="M7 3h10l1 7a6 6 0 0 1-12 0z"/><path d="M7 3h10l1 7a6 6 0 0 1-12 0zM12 16v5M8 21h8"/></svg>';
 $('recognize').onclick = async () => {
   if (!photo || controller) return;
   const endpoint = window.SCANNER_CONFIG?.recognitionEndpoint;
