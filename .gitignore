@@ -2,6 +2,9 @@
 node_modules/
 dist/
 .vercel/
+.venv/
+__pycache__/
+*.py[cod]
 
 # Local-only configuration
 .env*

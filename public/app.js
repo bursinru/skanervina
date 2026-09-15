@@ -94,6 +94,11 @@ function resolveImageUrl(imageUrl, fileName) {
     return safeImage(new URL(relative, base).href);
   } catch { return ''; }
 }
+function formatRating(value) {
+  const rating = Number(value);
+  if (!Number.isFinite(rating) || rating < 0 || rating > 5) return '';
+  return `${rating.toFixed(1).replace(/\.0$/, '')} / 5`;
+}
 $('recognize').onclick = async () => {
   if (!photo || controller) return;
   const endpoint = window.SCANNER_CONFIG?.recognitionEndpoint;
@@ -117,13 +122,15 @@ $('cancel-request').onclick = () => controller?.abort('user');
 function showWine(wine) {
   stopCamera(); currentWine = wine; $('scanner-screen').hidden = true; $('result-screen').hidden = false;
   const image = resolveImageUrl(wine.image_url, wine.photo_name || wine.image_name || wine.photoName);
+  const rating = formatRating(wine.public_rating);
+  const dishes = Array.isArray(wine.dishes) ? wine.dishes.filter(Boolean) : [];
   $('result-screen').innerHTML = `
     <div class="result-top"><button class="text-button" id="back-to-scanner">${icon('arrow-left')} К сканеру</button><span class="demo-badge">${wine.demo ? 'Пример карточки · не результат сканирования' : 'Вино найдено'}</span></div>
     <div class="result-layout"><div class="wine-portrait">${image ? `<img src="${escape(image)}" alt="${escape(wine.name)}"/>` : '<span>Фото пока нет</span>'}<span class="portrait-caption">СВОЁ ВИНО · РОССИЙСКИЕ ВИНОДЕЛЬНИ</span></div>
     <div class="wine-details"><p class="eyebrow">${escape(wine.winery)}</p><h1>${escape(wine.name)}</h1><p class="wine-category">${escape(wine.category || '')}${wine.region ? ' · ' + escape(wine.region) : ''}</p>
-    <div class="rating-budget"><div class="data-block"><span>ОЦЕНКА ВИНА</span><strong>Пока нет данных</strong><small>Рейтинг появится с источником</small></div><div class="data-block"><label for="shelf-price">ВАША ЦЕНА С ПОЛКИ</label><div class="price-input"><input id="shelf-price" inputmode="numeric" type="number" min="0" max="1000000" step="1" placeholder="Укажите цену" aria-label="Цена с полки в рублях"/><span>₽</span></div><small>Можно сохранить вместе с вином</small></div></div>
-    <p class="wine-summary">${escape(wine.summary || wine.description || 'Описание пока не добавлено.')}</p><div class="taste-tags">${(Array.isArray(wine.aromas) ? wine.aromas : []).map(tag => `<span>${escape(tag)}</span>`).join('')}</div><p class="source-note">${escape(wine.source || 'Данные сервиса распознавания')}</p>
-    <div class="wine-facts"><span><small>СОРТ ВИНОГРАДА</small>${escape(Array.isArray(wine.grapes) ? wine.grapes.join(', ') : wine.grapes || 'Не указан')}</span><span><small>РЕГИОН</small>${escape(wine.region || 'Не указан')}</span></div>
+    <div class="rating-budget"><div class="data-block"><span>НАРОДНЫЙ РЕЙТИНГ</span><strong>${escape(rating || 'Пока нет данных')}</strong><small>${rating ? 'По публичному каталогу «Своё Вино»' : 'Рейтинг появится с источником'}</small></div><div class="data-block"><label for="shelf-price">ВАША ЦЕНА С ПОЛКИ</label><div class="price-input"><input id="shelf-price" inputmode="numeric" type="number" min="0" max="1000000" step="1" placeholder="Укажите цену" aria-label="Цена с полки в рублях"/><span>₽</span></div><small>Можно сохранить вместе с вином</small></div></div>
+    <p class="wine-summary">${escape(wine.summary || wine.description || 'Описание пока не добавлено.')}</p><div class="taste-tags">${(Array.isArray(wine.aromas) ? wine.aromas : []).map(tag => `<span>${escape(tag)}</span>`).join('')}</div><p class="source-note">${escape(wine.source || 'Данные сервиса распознавания')}</p>${dishes.length ? `<p class="source-note">Сочетания: ${dishes.map(dish => escape(dish)).join(', ')}</p>` : ''}
+    <div class="wine-facts"><span><small>СОРТ ВИНОГРАДА</small>${escape(Array.isArray(wine.grapes) ? wine.grapes.join(', ') : wine.grapes || 'Не указан')}</span><span><small>РЕГИОН</small>${escape(wine.region || 'Не указан')}</span>${wine.temperature ? `<span><small>ПОДАВАТЬ</small>${escape(wine.temperature)}</span>` : ''}${wine.alcohol ? `<span><small>КРЕПОСТЬ</small>${escape(wine.alcohol)}</span>` : ''}</div>
     <div class="result-actions"><button class="button primary" id="save-wine">${icon('bookmark')} Сохранить вино</button><button class="button secondary" id="scan-again">${icon('camera')} Ещё одно вино</button></div></div></div>
     ${wine.demo ? `<section class="pairings"><div class="pairings-heading">${icon('utensils')}<h2>Что у вас на ужин?</h2></div><p class="muted">Выберите блюдо — подскажем, как оно сочетается с этим стилем вина.</p><div class="food-buttons"><button data-food="fish" aria-pressed="true">Рыба и морепродукты</button><button data-food="cheese" aria-pressed="false">Мягкий сыр</button><button data-food="salad" aria-pressed="false">Лёгкий салат</button><button data-food="steak" aria-pressed="false">Стейк</button><button data-food="dessert" aria-pressed="false">Десерт</button></div><p class="pairing-explanation" id="pairing-explanation"></p><p class="source-note">Общая рекомендация для стиля «белое игристое брют», а не экспертная оценка этой бутылки.</p></section>` : ''}
     <details class="description"><summary>Полное описание вина</summary><p>${escape(wine.description || 'Описание пока не добавлено.')}</p></details>`;
