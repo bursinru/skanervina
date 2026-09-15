@@ -30,29 +30,23 @@
   </header>
   <main id="main">
     <section id="scanner-screen">
-      <div class="page-heading"><div><p class="eyebrow">ВАШ ГИД ПО РОССИЙСКОМУ ВИНУ</p><h1>Найдите своё вино</h1><p class="subtitle">Одна фотография этикетки — и вино станет понятнее.</p></div><span class="step-label"><span>01</span> Сканирование <i></i> <span>02</span> Знакомство</span></div>
+      <div class="page-heading"><div class="page-heading-copy"><h1>Узнайте оценку вина</h1><p class="subtitle">Наведите камеру на этикетку — покажем рейтинг, вкус и подходящие блюда.</p></div></div>
       <div class="scanner-layout">
         <section class="scanner-card" aria-label="Сканирование этикетки">
           <div class="viewfinder" id="dropzone">
-            <div class="viewfinder-top"><span class="lens-label"><span data-icon="scan"></span> СКАНЕР ЭТИКЕТКИ</span><span class="photo-hint">Одна бутылка в кадре</span></div>
+            <div class="viewfinder-top"><span class="lens-label"><span data-icon="scan"></span> СКАНИРОВАНИЕ</span></div>
             <img class="example-bottle" id="example-bottle" src="/assets/blanc-de-blancs.webp" alt="Пример: бутылка Фанагория Blanc de Blancs" />
             <img id="photo-preview" class="photo-preview" alt="Загруженная этикетка" hidden />
             <video id="camera-video" autoplay muted playsinline hidden></video>
             <div class="scan-frame" aria-hidden="true"><span></span><span></span><span></span><span></span><div class="scan-line"></div></div>
             <span class="sample-label" id="sample-label">Пример положения бутылки</span>
-            <div class="viewfinder-caption" id="viewfinder-caption"><span data-icon="focus"></span> Поместите этикетку внутрь рамки</div>
+            <div class="viewfinder-caption" id="viewfinder-caption"><span data-icon="focus"></span> Наведите камеру на этикетку</div>
             <div class="processing-overlay" id="processing" hidden><span class="spinner"></span><h2>Знакомимся с вашим вином</h2><p>Проверяем этикетку по каталогу</p><button class="text-button light" id="cancel-request">Отменить</button></div>
           </div>
-          <div class="scanner-controls"><div class="control-copy"><h2 id="control-title">Начнём с этикетки</h2><p id="control-description">Сфотографируйте бутылку или выберите снимок.</p></div><div class="button-row" id="initial-actions"><button class="button primary" id="open-camera"><span data-icon="camera"></span> Открыть камеру</button><button class="button secondary" id="upload"><span data-icon="image"></span> Загрузить фото</button></div><div class="button-row" id="preview-actions" hidden><button class="button primary" id="recognize"><span data-icon="scan"></span> Узнать вино</button><button class="button secondary" id="replace-photo">Другое фото</button></div><div class="button-row" id="camera-actions" hidden><button class="button primary" id="capture"><span data-icon="camera"></span> Сделать снимок</button><button class="button secondary" id="close-camera">Закрыть камеру</button></div><p class="file-note" id="file-note">JPG, PNG или WebP · до 15 МБ <span>Можно перетащить фото в рамку</span></p><p class="notice" id="notice" role="status" hidden></p></div>
+          <div class="scanner-controls"><div class="button-row" id="initial-actions"><button class="button primary" id="open-camera"><span data-icon="camera"></span> Сканировать этикетку</button><button class="button secondary" id="upload"><span data-icon="image"></span> Выбрать фото</button></div><div class="button-row" id="preview-actions" hidden><button class="button primary" id="recognize"><span data-icon="scan"></span> Узнать вино</button><button class="button secondary" id="replace-photo">Другое фото</button></div><div class="button-row" id="camera-actions" hidden><button class="button primary" id="capture"><span data-icon="camera"></span> Сделать снимок</button><button class="button secondary" id="close-camera">Закрыть камеру</button></div><p class="notice" id="notice" role="status" hidden></p></div>
           <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp" hidden />
         </section>
-        <aside class="scanner-aside">
-          <div class="intro"><span class="section-number">ЗНАКОМСТВО БЕЗ СЛОЖНЫХ СЛОВ</span><h2>Что скрывается<br>за этикеткой?</h2><p>Узнайте характер вина, прежде чем<br class="desktop-break"> наполнить бокал.</p></div>
-          <div class="benefits"><div><span class="benefit-icon" data-icon="wine"></span><section><h3>Вкус, который можно представить</h3><p>От свежих цитрусов до спелых ягод. <br>Понятно, даже если вы не сомелье.</p></section></div><div><span class="benefit-icon" data-icon="utensils"></span><section><h3>Идеальная компания к ужину</h3><p>Сочетания с блюдами и подсказки<br>для вашего вечера.</p></section></div><div><span class="benefit-icon" data-icon="star"></span><section><h3>Оценки и ваш выбор</h3><p>Народный рейтинг и ваша оценка.<br>Выбирайте вино по своему вкусу.</p></section></div></div>
-          <button class="example-card" id="show-example"><span class="example-image"><img src="/assets/blanc-de-blancs.webp" alt="" /></span><span><small>ПОСМОТРИТЕ, КАК ЭТО РАБОТАЕТ</small><strong>Фанагория<br>Blanc de Blancs</strong><span class="example-link">Открыть пример карточки <span data-icon="arrow-right"></span></span></span></button>
-        </aside>
       </div>
-      <section class="tips"><span class="tips-heading"><span data-icon="sparkles"></span> Секрет хорошего снимка</span><p><b>01</b> Этикетка целиком</p><p><b>02</b> Без бликов и размытия</p><p><b>03</b> Камера прямо перед бутылкой</p></section>
     </section>
     <section id="result-screen" hidden tabindex="-1"></section>
   </main>

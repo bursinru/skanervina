@@ -275,3 +275,36 @@ body{background:#fffdfb}
   .compare-bars{margin-top:8px}
   .compare-bars>span{grid-template-columns:84px minmax(0,1fr)}
 }
+
+/* The home screen is intentionally focused on one action: scanning a label. */
+#scanner-screen{max-width:760px;margin:0 auto}
+#scanner-screen .page-heading{justify-content:center;margin-bottom:28px}
+#scanner-screen .page-heading-copy{max-width:650px;text-align:center;margin:0 auto}
+#scanner-screen .page-heading h1{font-size:clamp(38px,5vw,56px)}
+#scanner-screen .page-heading .subtitle{max-width:620px;margin:14px auto 0;font-size:17px;line-height:1.55}
+#scanner-screen .scanner-layout{display:block}
+#scanner-screen .scanner-card{width:min(100%,700px);margin:0 auto;background:transparent;border:0;overflow:visible}
+#scanner-screen .viewfinder{height:auto;aspect-ratio:1;border-radius:28px}
+#scanner-screen .example-bottle{width:88%;height:88%;top:6%}
+#scanner-screen .scan-frame{width:57%;height:31%;top:34%}
+#scanner-screen .sample-label{display:none}
+#scanner-screen .viewfinder-caption{bottom:24px;padding:12px 18px;font-size:14px}
+#scanner-screen .scanner-controls{padding:16px 0 0}
+#scanner-screen .scanner-controls .button-row{flex-direction:column;gap:10px;margin-top:0}
+#scanner-screen .scanner-controls .button{width:100%;min-height:56px;border-radius:30px;font-size:16px}
+#scanner-screen .scanner-controls .notice{margin-top:14px}
+
+@media(min-width:1450px){
+  #scanner-screen .viewfinder{height:auto}
+}
+
+@media(max-width:720px){
+  #scanner-screen{max-width:none}
+  #scanner-screen .page-heading{margin-bottom:20px}
+  #scanner-screen .page-heading h1{font-size:36px}
+  #scanner-screen .page-heading .subtitle{margin-top:10px;font-size:15px;line-height:1.55}
+  #scanner-screen .viewfinder{border-radius:22px}
+  #scanner-screen .viewfinder-caption{bottom:16px;padding:10px 14px;font-size:12px}
+  #scanner-screen .scanner-controls{padding-top:12px}
+  #scanner-screen .scanner-controls .button{min-height:54px;font-size:15px}
+}

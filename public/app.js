@@ -222,9 +222,12 @@ function toggleCompare(wine) {
 function stopCamera() { cameraGeneration++; stream?.getTracks().forEach(t => t.stop()); stream = null; $('camera-video').srcObject = null; $('camera-video').hidden = true; $('open-camera').disabled = false; }
 function updateControls(mode) {
   ['initial','preview','camera'].forEach(name => $(name + '-actions').hidden = name !== mode);
-  $('control-title').textContent = { initial:'Начнём с этикетки', preview:'Этикетка хорошо видна?', camera:'Поймайте этикетку в рамку' }[mode];
-  $('control-description').textContent = { initial:'Сфотографируйте бутылку или выберите снимок.', preview:'Название и производитель должны читаться.', camera:'Держите телефон ровно и избегайте бликов.' }[mode];
-  $('file-note').hidden = mode !== 'initial';
+  const title = $('control-title');
+  const description = $('control-description');
+  const fileNote = $('file-note');
+  if (title) title.textContent = { initial:'Начнём с этикетки', preview:'Этикетка хорошо видна?', camera:'Поймайте этикетку в рамку' }[mode];
+  if (description) description.textContent = { initial:'Сфотографируйте бутылку или выберите снимок.', preview:'Название и производитель должны читаться.', camera:'Держите телефон ровно и избегайте бликов.' }[mode];
+  if (fileNote) fileNote.hidden = mode !== 'initial';
 }
 async function selectPhoto(file) {
   if (!file) return;
@@ -378,8 +381,7 @@ function showWine(wine) {
   }
   $('result-screen').focus({ preventScroll:true }); window.scrollTo({ top:0, behavior:'instant' });
 }
-function backToScanner() { $('result-screen').hidden = true; $('scanner-screen').hidden = false; $('show-example').focus({ preventScroll:true }); window.scrollTo({ top:0, behavior:'instant' }); }
-$('show-example').onclick = () => showWine(example);
+function backToScanner() { $('result-screen').hidden = true; $('scanner-screen').hidden = false; $('show-example')?.focus({ preventScroll:true }); window.scrollTo({ top:0, behavior:'instant' }); }
 function persist() { try { localStorage.setItem('svoe-wines', JSON.stringify(saved)); syncSavedCount(); return true; } catch { toast('Не удалось сохранить: хранилище браузера недоступно.'); return false; } }
 function saveWine() {
   if (!currentWine) return;
