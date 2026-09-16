@@ -1,0 +1,24 @@
+{
+  "selection_data": "validation only",
+  "target_empirical_precision": 0.98,
+  "minimum_accepts": 20,
+  "minimum_wilson_precision_lower_95": 0.9,
+  "warning": "Operating thresholds remain experimental; synthetic calibration is not production validation.",
+  "baseline": {
+    "validation_choice": null,
+    "test": null
+  },
+  "adapter": {
+    "validation_choice": null,
+    "test": null
+  },
+  "paired_test_top1": {
+    "top1_delta": 0.34375,
+    "bootstrap_identity_groups": 64,
+    "paired_95_percentile_interval": [
+      0.2265625,
+      0.4453125
+    ],
+    "note": "Bootstrap groups both synthetic views by source identity; not a real-photo confidence interval."
+  }
+}

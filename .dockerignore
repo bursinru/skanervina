@@ -1,0 +1,13 @@
+.git
+Датасет
+backend/.venv
+backend/data
+**/__pycache__
+.env
+node_modules
+dist
+**/node_modules
+**/.nuxt
+**/.output
+backend/.venv-cv
+**/.env*

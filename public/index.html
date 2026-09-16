@@ -29,6 +29,11 @@
     </div>
   </header>
   <main id="main">
+    <section class="admin-tools" id="admin-tools" hidden>
+      <label for="admin-token">Диагностика администратора · ключ доступа</label>
+      <input id="admin-token" type="password" autocomplete="off" placeholder="SCANNER_ADMIN_TOKEN" />
+      <p>Ключ действует только в этой вкладке. Показатели появятся после сканирования.</p>
+    </section>
     <section id="scanner-screen">
       <div class="page-heading"><div class="page-heading-copy"><h1>Узнайте оценку вина</h1><p class="subtitle">Наведите камеру на этикетку — покажем рейтинг, вкус и подходящие блюда.</p></div></div>
       <div class="scanner-layout">
@@ -41,9 +46,9 @@
             <div class="scan-frame" aria-hidden="true"><span></span><span></span><span></span><span></span><div class="scan-line"></div></div>
             <span class="sample-label" id="sample-label">Пример положения бутылки</span>
             <div class="viewfinder-caption" id="viewfinder-caption"><span data-icon="focus"></span> Наведите камеру на этикетку</div>
-            <div class="processing-overlay" id="processing" hidden><span class="spinner"></span><h2>Знакомимся с вашим вином</h2><p>Проверяем этикетку по каталогу</p><button class="text-button light" id="cancel-request">Отменить</button></div>
+            <div class="processing-overlay" id="processing" hidden><div class="label-cutout"><img id="scanning-label" alt="Фото, по которому идёт поиск" /><span></span></div><h2>Знакомимся с вашим вином</h2><p>Проверяем этикетку по каталогу</p><button class="text-button light" id="cancel-request">Отменить</button></div>
           </div>
-          <div class="scanner-controls"><div class="button-row" id="initial-actions"><button class="button primary" id="open-camera"><span data-icon="camera"></span> Сканировать этикетку</button><button class="button secondary" id="upload"><span data-icon="image"></span> Выбрать фото</button></div><div class="button-row" id="preview-actions" hidden><button class="button primary" id="recognize"><span data-icon="scan"></span> Узнать вино</button><button class="button secondary" id="replace-photo">Другое фото</button></div><div class="button-row" id="camera-actions" hidden><button class="button primary" id="capture"><span data-icon="camera"></span> Сделать снимок</button><button class="button secondary" id="close-camera">Закрыть камеру</button></div><p class="notice" id="notice" role="status" hidden></p></div>
+          <div class="scanner-controls"><div class="button-row" id="initial-actions"><button class="button primary" id="open-camera"><span data-icon="camera"></span> Сканировать этикетку</button><button class="button secondary" id="upload"><span data-icon="image"></span> Выбрать фото</button></div><div class="button-row" id="preview-actions" hidden><button class="button primary" id="recognize"><span data-icon="scan"></span> Узнать вино</button><button class="button secondary" id="crop-label">Выделить этикетку</button><button class="button secondary" id="replace-photo">Другое фото</button></div><div class="button-row" id="camera-actions" hidden><button class="button primary" id="capture"><span data-icon="camera"></span> Сделать снимок</button><button class="button secondary" id="close-camera">Закрыть камеру</button></div><p class="notice" id="notice" role="status" hidden></p></div>
           <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp" hidden />
         </section>
       </div>
@@ -66,6 +71,14 @@
     </div>
   </footer>
   <aside class="compare-tray" id="compare-tray" aria-live="polite" hidden><div><strong><span id="compare-count-label">Сравнение</span></strong><p id="compare-tray-copy">Выбрано одно вино</p></div><button class="button primary" id="compare-tray-open" type="button">Сравнить <span id="compare-tray-count">0</span></button></aside>
+  <dialog id="crop-dialog" class="crop-dialog">
+    <div class="dialog-heading"><h2>Выделите этикетку</h2><button class="icon-button" id="crop-close" aria-label="Закрыть выделение">×</button></div>
+    <p class="muted">Обведите этикетку пальцем или мышью. В поиск отправится только выделенная область.</p>
+    <canvas id="crop-canvas" aria-label="Область этикетки. Границы также можно задать полями ниже."></canvas>
+    <div class="crop-fields"><label>Слева, %<input id="crop-left" type="number" min="0" max="100" value="0" /></label><label>Сверху, %<input id="crop-top" type="number" min="0" max="100" value="0" /></label><label>Справа, %<input id="crop-right" type="number" min="0" max="100" value="100" /></label><label>Снизу, %<input id="crop-bottom" type="number" min="0" max="100" value="100" /></label></div>
+    <div class="button-row"><button class="button primary" id="crop-apply">Оставить этикетку</button><button class="button secondary" id="crop-reset">Всё фото</button></div>
+  </dialog>
+  <dialog id="search-dialog"><div class="dialog-heading"><h2>Поиск по каталогу</h2><button class="icon-button" id="search-close" aria-label="Закрыть поиск">×</button></div><form id="catalog-search"><label for="wine-query">Название вина или винодельня</label><input id="wine-query" type="search" minlength="2" maxlength="200" required placeholder="Например, Фанагория" /><button class="button primary" type="submit">Найти</button></form><p id="search-status" role="status"></p><div id="search-results"></div></dialog>
   <dialog id="saved-dialog"><div class="dialog-heading"><h2>Мои вина</h2><button class="icon-button" id="saved-close" aria-label="Закрыть"><span data-icon="x"></span></button></div><p class="muted">Сохранены в этом браузере.</p><div id="saved-list"></div></dialog>
   <dialog id="compare-dialog"><div class="dialog-heading"><div><h2>Сравнение вин</h2><p class="muted">До трёх бутылок рядом</p></div><button class="icon-button" id="compare-close" aria-label="Закрыть"><span data-icon="x"></span></button></div><div class="compare-list" id="compare-list"></div></dialog>
   <div id="toast" class="toast" role="status" hidden></div>

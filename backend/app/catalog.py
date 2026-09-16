@@ -146,6 +146,21 @@ class WineCatalog:
                 self._index.setdefault(token, set()).add(wine.slug)
 
     @classmethod
+    def from_database(cls, image_base_url):
+        from .database import connect
+        from dataclasses import fields
+        names = {field.name for field in fields(CatalogWine)}
+        wines = []
+        with connect() as db:
+            for row in db.execute('SELECT card, image_name FROM wines ORDER BY slug'):
+                card = row['card']
+                values = {key: value for key, value in card.items() if key in names}
+                values.update(image_name=row['image_name'], image_base_url=image_base_url,
+                              direct_image_url=card.get('image_url'))
+                wines.append(CatalogWine(**values))
+        return cls(wines)
+
+    @classmethod
     def from_csv(cls, path: Path, image_base_url: str) -> "WineCatalog":
         with path.open("r", encoding="utf-8-sig", newline="") as handle:
             return cls.from_rows(csv.DictReader(handle), image_base_url)

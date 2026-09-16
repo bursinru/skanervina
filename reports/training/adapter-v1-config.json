@@ -1,0 +1,21 @@
+{
+  "run": "backend/data/training/adapter-v1",
+  "train": 256,
+  "validation": 64,
+  "test": 64,
+  "epochs": 20,
+  "batch_size": 16,
+  "seed": 20260916,
+  "lr": 0.001,
+  "images": "Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads",
+  "torch": "2.14.0",
+  "python": "3.11.16",
+  "device": "mps",
+  "source_hashes": {
+    "metrics.py": "ef0a5e3ddc78c01a98adc451016bdff0882b43d9163e7a6cee4e5b6a3687bd25",
+    "run.py": "1d57d9a826dbb5f306c1b169a6f283c17a93c31b8fdfca5d095d05bfb8ee177e",
+    "adapter.py": "a455d1454ab1159a583c85505495bc54110d1628cf2dc6d71a2ab1fab07da4b4",
+    "__init__.py": "bd526ae11417596d03e6123bfbba17612e1119b39f25e7944383bf0c39110c8b",
+    "augment.py": "5080454dd6b7f0fb155c66a4d78d9c10526cc27f74fbce87e38b78586edc1512"
+  }
+}

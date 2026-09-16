@@ -1,0 +1,79 @@
+{
+  "experiment": "Frozen SigLIP 2 + trained residual query adapter",
+  "model": "google/siglip2-base-patch16-224",
+  "revision": "75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2",
+  "manifest_fingerprint": "a20c24e7f98e22c363c867a490b003a5358551461d5af7bd1d1d27aadd182bfc",
+  "selected_epoch": 9,
+  "epochs_run": 20,
+  "trainable_parameters": 197504,
+  "training_seconds": 0.94,
+  "baseline_validation": {
+    "queries": 128,
+    "gallery_size": 2036,
+    "top1": 0.3515625,
+    "top3": 0.484375,
+    "top5": 0.5390625,
+    "mrr": 0.4493814555759409,
+    "accepted": 1,
+    "coverage": 0.0078125,
+    "accepted_precision": 1.0,
+    "false_accepts": 0,
+    "threshold": 0.88,
+    "margin": 0.04
+  },
+  "trained_validation": {
+    "queries": 128,
+    "gallery_size": 2036,
+    "top1": 0.6875,
+    "top3": 0.859375,
+    "top5": 0.890625,
+    "mrr": 0.7884379973944706,
+    "accepted": 0,
+    "coverage": 0.0,
+    "accepted_precision": null,
+    "false_accepts": 0,
+    "threshold": 0.88,
+    "margin": 0.04
+  },
+  "baseline_test": {
+    "queries": 128,
+    "gallery_size": 2036,
+    "top1": 0.2890625,
+    "top3": 0.453125,
+    "top5": 0.5,
+    "mrr": 0.38993495850679893,
+    "accepted": 0,
+    "coverage": 0.0,
+    "accepted_precision": null,
+    "false_accepts": 0,
+    "threshold": 0.88,
+    "margin": 0.04
+  },
+  "trained_test": {
+    "queries": 128,
+    "gallery_size": 2036,
+    "top1": 0.6328125,
+    "top3": 0.875,
+    "top5": 0.921875,
+    "mrr": 0.7569264309154016,
+    "accepted": 0,
+    "coverage": 0.0,
+    "accepted_precision": null,
+    "false_accepts": 0,
+    "threshold": 0.88,
+    "margin": 0.04
+  },
+  "selected_identities": {
+    "train": 256,
+    "validation": 64,
+    "test": 64
+  },
+  "promotion": "not_deployed_requires_real_labelled_validation",
+  "limitations": [
+    "Synthetic query images derived from catalog references, not real shelf photos.",
+    "Exact file hashes grouped; near-duplicate photos may remain.",
+    "Validation/test wine identities never used in gradient updates, including negatives.",
+    "All catalog references are legitimate retrieval gallery entries for evaluation.",
+    "The three unlabelled organizer queries are excluded entirely."
+  ]
+}

@@ -1,0 +1,5 @@
+-r requirements.txt
+psycopg[binary]>=3.2,<4
+transformers==4.57.1
+torch>=2.6,<3
+safetensors>=0.4,<1

@@ -1,3 +1,4 @@
+import { initLabelCrop } from '/crop.js';
 const $ = (id) => document.getElementById(id);
 const paths = {
   wine: '<path d="M7 3h10l1 7a6 6 0 0 1-12 0zM12 16v5M8 21h8M7 9h10"/>',
@@ -147,6 +148,31 @@ let saved = [];
 try { const raw = JSON.parse(localStorage.getItem('svoe-wines') || '[]'); if (Array.isArray(raw)) saved = raw.filter(w => w && typeof w.slug === 'string' && typeof w.name === 'string').slice(0,100); } catch {}
 let ratings = {};
 try { const raw = JSON.parse(localStorage.getItem('svoe-ratings') || '{}'); if (raw && typeof raw === 'object') ratings = raw; } catch {}
+const profileEndpoint = window.SCANNER_CONFIG?.profileEndpoint;
+let profileReady = !profileEndpoint;
+let profileWrites = Promise.resolve();
+if (profileEndpoint) {
+  try {
+    const response = await fetch(profileEndpoint, { signal: AbortSignal.timeout(5000) });
+    if (!response.ok) throw new Error('profile');
+    const state = await response.json();
+    saved = state.saved;
+    ratings = state.ratings;
+    profileReady = true;
+    document.querySelector('#saved-dialog > .muted').textContent = 'Хранятся на сервере. Доступ привязан к этому браузеру.';
+  } catch { toast('Сервер сохранений недоступен. Изменения останутся в браузере; обновите страницу для подключения.'); }
+}
+function syncProfile() {
+  if (!profileEndpoint || !profileReady) return;
+  const body = JSON.stringify({ saved, ratings });
+  profileWrites = profileWrites.then(async () => {
+    const response = await fetch(profileEndpoint, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Scanner-Client': 'web' },
+      body, signal: AbortSignal.timeout(10000)
+    });
+    if (!response.ok) throw new Error('save');
+  }).catch(() => toast('Не удалось записать изменения на сервер. Копия осталась в браузере. Повторите сохранение.'));
+}
 let comparison = [];
 try { const raw = JSON.parse(localStorage.getItem('svoe-comparison') || '[]'); if (Array.isArray(raw)) comparison = raw.filter(wine => wine && typeof wine.slug === 'string' && typeof wine.name === 'string').slice(0, 3); } catch {}
 const syncSavedCount = () => $('saved-count').textContent = saved.length;
@@ -230,14 +256,14 @@ function updateControls(mode) {
   if (fileNote) fileNote.hidden = mode !== 'initial';
 }
 async function selectPhoto(file) {
-  if (!file) return;
+  if (!file || controller) return;
   notice('');
   if (!['image/jpeg','image/png','image/webp'].includes(file.type)) { notice('Выберите JPG, PNG или WebP. Для HEIC сохраните фотографию в JPG.'); return; }
   if (file.size > 15 * 1024 * 1024) { notice('Фотография слишком большая. Выберите файл до 15 МБ.'); return; }
   const candidateUrl = URL.createObjectURL(file);
   try {
     const img = new Image(); img.src = candidateUrl; await img.decode();
-    if (!img.naturalWidth || !img.naturalHeight) throw new Error('Invalid image');
+    if (!img.naturalWidth || !img.naturalHeight || img.naturalWidth * img.naturalHeight > 24000000) throw new Error('Invalid image');
   } catch { URL.revokeObjectURL(candidateUrl); notice('Не удалось открыть изображение. Попробуйте другую фотографию.'); return; }
   stopCamera(); if (photoUrl) URL.revokeObjectURL(photoUrl);
   photo = file; photoUrl = candidateUrl;
@@ -290,21 +316,58 @@ function formatRating(value) {
   return `${rating.toFixed(1).replace(/\.0$/, '')} / 5`;
 }
 const ratingGlass = () => '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="rating-glass-body" d="M7 3h10l1 7a6 6 0 0 1-12 0z"/><path d="M7 3h10l1 7a6 6 0 0 1-12 0zM12 16v5M8 21h8"/></svg>';
+const adminMode = new URLSearchParams(location.search).get('admin') === '1';
+$('admin-tools').hidden = !adminMode;
+initLabelCrop({ getPhoto: () => controller ? null : photo, onApply: async file => {
+  await selectPhoto(file);
+  $('viewfinder-caption').textContent = 'Выделенная этикетка · готова к поиску';
+}, onError: notice });
+function showDiagnostics(result, elapsed) {
+  if (!adminMode || !$('admin-token').value) return;
+  const details = document.createElement('details'); details.className = 'admin-diagnostics'; details.open = true;
+  const summary = document.createElement('summary'); summary.textContent = 'Диагностика администратора'; details.append(summary);
+  const metrics = result.recognition || {};
+  const score = metrics.similarity;
+  const lines = [
+    `Статус: ${result.status}`,
+    `Сходство изображений: ${Number.isFinite(score) ? (score * 100).toFixed(1) + '%' : 'не измерено (OCR)'}`,
+    'Сходство — косинусная оценка, не вероятность правильного ответа.',
+    `Полное ожидание: ${(elapsed / 1000).toFixed(2)} с`,
+    `Обработка на сервере: ${((metrics.timings_ms?.total || 0) / 1000).toFixed(2)} с`,
+    `Визуальный поиск: ${((metrics.timings_ms?.visual || 0) / 1000).toFixed(2)} с · OCR: ${((metrics.timings_ms?.ocr || 0) / 1000).toFixed(2)} с`,
+    `OCR: ${metrics.ocr || metrics.reason || '—'} · подтверждает результат: ${metrics.ocr_corroborated ? 'да' : 'нет'}`,
+    `Оценка текстового поиска: ${Number.isFinite(metrics.ocr_best?.score) ? (metrics.ocr_best.score * 100).toFixed(1) + '%' : '—'}`,
+    `Отрыв от следующего: ${Number.isFinite(metrics.margin) ? (metrics.margin * 100).toFixed(2) + ' п.п.' : '—'}`,
+  ];
+  const text = document.createElement('pre'); text.textContent = lines.join('\n'); details.append(text);
+  document.querySelector('.admin-diagnostics')?.remove();
+  if (result.wine) $('result-screen').querySelector('.result-top').after(details);
+  else $('admin-tools').append(details);
+}
 $('recognize').onclick = async () => {
   if (!photo || controller) return;
   const endpoint = window.SCANNER_CONFIG?.recognitionEndpoint;
   if (!endpoint) { notice('Фото готово. Распознавание ещё не подключено — снимок никуда не отправлен. Пока можно открыть пример карточки ниже.'); return; }
   notice(''); controller = new AbortController(); const active = controller;
   const timer = setTimeout(() => active.abort('timeout'), 30000);
+  const started = performance.now();
+  $('scanning-label').src = photoUrl;
   $('processing').hidden = false;
   try {
     const body = new FormData(); body.append('image', photo);
-    const response = await fetch(endpoint, { method:'POST', body, signal:active.signal });
+    const headers = adminMode && $('admin-token').value ? { 'X-Scanner-Admin': $('admin-token').value.trim() } : {};
+    const response = await fetch(endpoint, { method:'POST', headers, body, signal:active.signal });
+    if (response.status === 403) { notice('Неверный ключ администратора. Проверьте SCANNER_ADMIN_TOKEN.'); return; }
     if (!response.ok) throw new Error('service');
     const result = await response.json();
-    if (result.status === 'unknown' || result.status === 'uncertain') { notice('Не удалось определить вино точно. Снимите этикетку ближе, без бликов, и попробуйте ещё раз.'); return; }
-    if (result.status !== 'matched' || !result.wine?.name || !(result.wine.slug || result.slug)) throw new Error('contract');
-    showWine({ ...result.wine, slug:result.wine.slug || result.slug, image_url:result.wine.image_url || result.wine.imageUrl || result.wine.photo_name, demo:false });
+    if (result.status === 'unknown') {
+      notice('Не удалось найти достаточно похожую этикетку. Выделите её крупнее, без бликов, и попробуйте ещё раз.');
+      showDiagnostics(result, performance.now() - started);
+      return;
+    }
+    if (!['matched', 'uncertain'].includes(result.status) || !result.wine?.name || !(result.wine.slug || result.slug)) throw new Error('contract');
+    showWine({ ...result.wine, slug:result.wine.slug || result.slug, image_url:result.wine.image_url || result.wine.imageUrl || result.wine.photo_name, demo:false, uncertain:result.status === 'uncertain' });
+    showDiagnostics(result, performance.now() - started);
   } catch (err) {
     notice(active.signal.aborted ? (active.signal.reason === 'timeout' ? 'Поиск занял слишком много времени. Попробуйте ещё раз.' : 'Поиск отменён. Можно выбрать другое фото.') : 'Сервис распознавания сейчас недоступен или вернул неполную карточку. Попробуйте позже.');
   } finally { clearTimeout(timer); controller = null; $('processing').hidden = true; }
@@ -334,7 +397,7 @@ function showWine(wine) {
     return `<article class="dish-card">${dishImage ? `<img src="${escape(dishImage)}" alt="" loading="lazy">` : '<span class="dish-placeholder">Вино и еда</span>'}<strong>${escape(dish)}</strong></article>`;
   }).join('');
   $('result-screen').innerHTML = `
-    <div class="result-top"><button class="text-button" id="back-to-scanner">${icon('arrow-left')} К сканеру</button><span class="demo-badge">${wine.demo ? 'Пример карточки · не результат сканирования' : 'Вино найдено'}</span></div>
+    <div class="result-top"><button class="text-button" id="back-to-scanner">${icon('arrow-left')} К сканеру</button><span class="demo-badge">${wine.demo ? 'Пример карточки · не результат сканирования' : wine.manualSelection ? 'Выбрано вами' : wine.uncertain ? 'Наиболее похожее · проверьте название' : 'Вино найдено'}</span></div>
     <div class="result-layout"><div class="wine-portrait">${image ? `<img src="${escape(image)}" alt="${escape(wine.name)}"/>` : '<span>Фото пока нет</span>'}<button class="portrait-save icon-action" id="save-wine" type="button" aria-label="Сохранить вино">${icon('bookmark')}</button><span class="portrait-caption">СВОЁ ВИНО · РОССИЙСКИЕ ВИНОДЕЛЬНИ</span></div>
     <div class="wine-details"><p class="eyebrow">${escape(wine.winery)}</p><h1>${escape(wine.name)}</h1><p class="wine-category">${escape(wine.category || '')}${wine.region ? ' · ' + escape(wine.region) : ''}</p>
     ${visualFacts ? `<section class="catalog-visuals" aria-label="Характеристики из каталога"><div class="visual-facts">${visualFacts}</div></section>` : ''}
@@ -352,11 +415,12 @@ function showWine(wine) {
   $('compare-wine').onclick = () => toggleCompare(wine);
   syncSaveButton();
   syncCompareButton();
-  const setUserRating = value => {
+  const setUserRating = (value, persistRating = true) => {
     const normalized = Number.isInteger(value) && value >= 0 && value <= 5 ? value : 0;
-    if (normalized) {
+    if (normalized && persistRating) {
       ratings[wine.slug] = normalized;
       try { localStorage.setItem('svoe-ratings', JSON.stringify(ratings)); } catch { toast('Оценка показана только до закрытия страницы.'); }
+      syncProfile();
     }
     document.querySelectorAll('[data-user-rating]').forEach(button => {
       const buttonValue = Number(button.dataset.userRating);
@@ -367,7 +431,7 @@ function showWine(wine) {
     refreshFitCard();
   };
   document.querySelectorAll('[data-user-rating]').forEach(button => button.onclick = () => setUserRating(Number(button.dataset.userRating)));
-  setUserRating(Number(ratings[wine.slug]) || 0);
+  setUserRating(Number(ratings[wine.slug]) || 0, false);
   if (wine.demo) {
     const explanations = {
       fish:'Хорошая пара: свежесть брюта поддержит нежный вкус рыбы и морепродуктов. Выберите лёгкую подачу с лимоном, без сладкого или тяжёлого соуса.',
@@ -382,7 +446,7 @@ function showWine(wine) {
   $('result-screen').focus({ preventScroll:true }); window.scrollTo({ top:0, behavior:'instant' });
 }
 function backToScanner() { $('result-screen').hidden = true; $('scanner-screen').hidden = false; $('show-example')?.focus({ preventScroll:true }); window.scrollTo({ top:0, behavior:'instant' }); }
-function persist() { try { localStorage.setItem('svoe-wines', JSON.stringify(saved)); syncSavedCount(); return true; } catch { toast('Не удалось сохранить: хранилище браузера недоступно.'); return false; } }
+function persist() { try { localStorage.setItem('svoe-wines', JSON.stringify(saved)); syncSavedCount(); syncProfile(); return true; } catch { toast('Не удалось сохранить: хранилище браузера недоступно.'); return false; } }
 function saveWine() {
   if (!currentWine) return;
   const previous = [...saved];
@@ -430,3 +494,38 @@ $('compare-dialog').addEventListener('click', e => { if (e.target === $('compare
 renderCompareTray();
 window.addEventListener('pagehide', () => { stopCamera(); controller?.abort('user'); if (photoUrl) URL.revokeObjectURL(photoUrl); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && stream) $('close-camera').click(); });
+
+
+document.querySelector('.search-trigger').onclick = () => {
+  $('search-dialog').showModal(); $('wine-query').focus();
+};
+$('search-close').onclick = () => $('search-dialog').close();
+let searchRequest;
+$('catalog-search').onsubmit = async event => {
+  event.preventDefault();
+  searchRequest?.abort();
+  searchRequest = new AbortController();
+  const active = searchRequest;
+  $('search-status').textContent = 'Ищем в каталоге…';
+  $('search-results').replaceChildren();
+  const endpoint = window.SCANNER_CONFIG?.recognitionEndpoint;
+  if (!endpoint) { $('search-status').textContent = 'Поиск доступен в подключённой версии приложения.'; return; }
+  const url = new URL(endpoint, location.origin);
+  url.pathname = url.pathname.replace(/recognize$/, 'search');
+  url.searchParams.set('q', $('wine-query').value.trim());
+  const timer = setTimeout(() => active.abort(), 10000);
+  try {
+    const response = await fetch(url, { signal: active.signal });
+    if (!response.ok) throw new Error('search');
+    const { items } = await response.json();
+    $('search-status').textContent = items.length ? `Найдено: ${items.length}` : 'Ничего не найдено. Уточните название.';
+    for (const wine of items) {
+      const button = document.createElement('button');
+      button.className = 'catalog-result';
+      button.textContent = `${wine.name} · ${wine.winery}`;
+      button.onclick = () => { $('search-dialog').close(); showWine(wine); };
+      $('search-results').append(button);
+    }
+  } catch { if (active === searchRequest) $('search-status').textContent = 'Поиск недоступен. Попробуйте ещё раз.'; }
+  finally { clearTimeout(timer); }
+};

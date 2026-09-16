@@ -1,8 +1,18 @@
 from typing import Any, Dict, Literal, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, Request, Response
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
+import os
+import asyncio
+import secrets
+import shutil
+from pathlib import Path
+from . import storage
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
+from .limits import BodyLimitMiddleware
 
 from .catalog import WineCatalog
 from .recognition import Recognizer
@@ -10,8 +20,9 @@ from .settings import settings
 
 
 class WineCard(BaseModel):
-    slug: str
-    name: str
+    demo: bool = False
+    slug: str = Field(max_length=300)
+    name: str = Field(max_length=1000)
     winery: str
     category: str = ""
     region: str = ""
@@ -40,6 +51,7 @@ class RecognizeResponse(BaseModel):
 
 
 app = FastAPI(title="Своё Вино Recognition API", version="0.1.0")
+app.add_middleware(BodyLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_origins),
@@ -51,7 +63,12 @@ app.add_middleware(
 catalog: Optional[WineCatalog] = None
 catalog_error: Optional[str] = None
 try:
-    catalog = WineCatalog.from_csv(settings.catalog_csv, settings.image_base_url)
+    if os.getenv('DATABASE_URL'):
+        from .database import migrate
+        migrate()
+        catalog = WineCatalog.from_database(settings.image_base_url)
+    else:
+        catalog = WineCatalog.from_csv(settings.catalog_csv, settings.image_base_url)
 except Exception as error:
     catalog_error = str(error)
 
@@ -60,21 +77,51 @@ recognizer = Recognizer(catalog, settings) if catalog else None
 
 @app.get("/healthz")
 def healthz() -> Dict[str, Any]:
+    database_ok = True
+    indexed = 0
+    if os.getenv('DATABASE_URL'):
+        try:
+            from .database import connect
+            from .vision import MODEL_ID
+            with connect() as db:
+                indexed = db.execute('SELECT count(*) AS n FROM wine_embeddings WHERE model = %s', (MODEL_ID,)).fetchone()['n']
+        except Exception:
+            database_ok = False
+    cv_required = os.getenv('CV_ENABLED', 'false').lower() == 'true'
+    ready = bool(catalog and catalog.size and database_ok and
+                 (not cv_required or (recognizer.visual_status == 'ready' and indexed > 0)))
     return {
-        "status": "ok" if catalog else "degraded",
-        "catalog_loaded": catalog is not None,
+        "status": "ok" if ready else "degraded",
+        "catalog_loaded": catalog is not None and catalog.size > 0,
         "catalog_size": catalog.size if catalog else 0,
-        "catalog_error": catalog_error,
+        "catalog_error": "Catalog unavailable" if catalog_error else None,
+        "ocr_available": bool(shutil.which("tesseract")),
+        "storage": "postgresql" if os.getenv("DATABASE_URL") else "sqlite",
+        "database_available": database_ok,
+        "visual_search": recognizer.visual_status if recognizer else "unavailable",
+        "cv_device": recognizer.visual.encoder.device if recognizer and recognizer.visual else None,
+        "indexed_images": indexed,
     }
 
 
+@app.get('/readyz')
+def readyz(response: Response):
+    state = healthz()
+    if state['status'] != 'ok':
+        response.status_code = 503
+    return state
+
+
 def require_service() -> Recognizer:
-    if not recognizer:
+    if not recognizer or not recognizer.catalog.size:
         raise HTTPException(
             status_code=503,
             detail="Catalog is not loaded. Set CATALOG_CSV to the mounted catalog CSV.",
         )
     return recognizer
+
+
+inference_slots = asyncio.Semaphore(2)
 
 
 async def recognize_upload(image: UploadFile) -> Dict[str, Any]:
@@ -90,20 +137,42 @@ async def recognize_upload(image: UploadFile) -> Dict[str, Any]:
         raise HTTPException(status_code=413, detail="Image is larger than 15 MB.")
     if not data:
         raise HTTPException(status_code=400, detail="Image is empty.")
-    return require_service().recognize(data)
+    service = require_service()
+    try:
+        await asyncio.wait_for(inference_slots.acquire(), timeout=0.1)
+    except asyncio.TimeoutError:
+        raise HTTPException(429, 'Recognition is busy; retry shortly')
+    try:
+        return await run_in_threadpool(service.recognize, data)
+    except Exception:
+        import logging
+        logging.exception('Recognition service failed')
+        raise HTTPException(503, 'Recognition temporarily unavailable')
+    finally:
+        inference_slots.release()
 
 
 @app.post("/v1/recognize", response_model=RecognizeResponse)
-async def recognize(image: UploadFile = File(...)) -> Dict[str, Any]:
-    """Recognize a label and return the full wine card expected by the frontend."""
-    return await recognize_upload(image)
+async def recognize(request: Request, response: Response, image: UploadFile = File(...)) -> Dict[str, Any]:
+    """One best card; technical metrics require an administrator token."""
+    token = request.headers.get('X-Scanner-Admin', '')
+    expected = os.getenv('SCANNER_ADMIN_TOKEN', '')
+    if token and (not expected or not secrets.compare_digest(token.encode(), expected.encode())):
+        raise HTTPException(403, 'Invalid administrator token')
+    result = await recognize_upload(image)
+    response.headers['Cache-Control'] = 'no-store'
+    if not token:
+        result = {**result, 'confidence': None, 'recognition': {
+            key: value for key, value in result.get('recognition', {}).items() if key in ('method', 'reason')
+        }}
+    return result
 
 
 @app.post("/v1/eval/predict")
 async def eval_predict(image: UploadFile = File(...)) -> Dict[str, Optional[str]]:
     """Compatibility endpoint for the supplied evaluation harness."""
     result = await recognize_upload(image)
-    return {"slug": result.get("slug")}
+    return {"slug": result.get("slug") if result.get("status") == "matched" else None}
 
 
 @app.get("/v1/catalog/{slug}", response_model=WineCard)
@@ -113,3 +182,66 @@ def catalog_card(slug: str) -> Dict[str, Any]:
     if not wine:
         raise HTTPException(status_code=404, detail="Wine not found.")
     return wine.to_card()
+
+
+class ProfileState(BaseModel):
+    saved: list[WineCard] = Field(default_factory=list, max_length=100)
+    ratings: Dict[str, StrictInt] = Field(default_factory=dict)
+
+
+def session(request: Request, response: Response):
+    token, state = storage.profile(request.cookies.get("scanner_session"))
+    response.set_cookie("scanner_session", token, httponly=True, samesite="strict",
+                        secure=os.getenv("COOKIE_SECURE", "false").lower() == "true",
+                        max_age=60 * 60 * 24 * 365)
+    response.headers["Cache-Control"] = "no-store"
+    return token, state
+
+
+@app.get("/v1/profile")
+def get_profile(request: Request, response: Response):
+    return session(request, response)[1]
+
+
+@app.put("/v1/profile")
+def put_profile(state: ProfileState, request: Request, response: Response):
+    # Custom header forces a CORS preflight for cross-origin browser writes.
+    if request.headers.get("X-Scanner-Client") != "web":
+        raise HTTPException(403, "Missing client header")
+    if len(state.ratings) > 1000 or any(type(v) is not int or not 1 <= v <= 5 for v in state.ratings.values()):
+        raise HTTPException(422, "Ratings must be integers between 1 and 5; maximum 1000 entries")
+    token, _ = session(request, response)
+    payload = state.model_dump()
+    if len(str(payload)) > 500_000:
+        raise HTTPException(413, "Profile too large")
+    storage.save(token, payload)
+    return payload
+
+
+@app.get("/v1/search")
+def search(q: str = ""):
+    if not 2 <= len(q.strip()) <= 200:
+        raise HTTPException(422, "Query must contain 2–200 characters")
+    return {"items": [match.wine.to_card() for match in require_service().catalog.search(q, limit=20) if match.score >= 0.25]}
+
+
+PUBLIC = Path(os.getenv("STATIC_DIR", str(Path(__file__).resolve().parents[2] / "public")))
+
+
+@app.get("/config.js")
+def config():
+    import json
+    return Response("window.SCANNER_CONFIG = " + json.dumps({
+        "recognitionEndpoint": "/v1/recognize", "profileEndpoint": "/v1/profile",
+        "imageBaseUrl": settings.image_base_url,
+    }) + ";", media_type="text/javascript")
+
+
+@app.get("/scanner")
+@app.get("/scanner/")
+def scanner():
+    return FileResponse(PUBLIC / "index.html")
+
+
+if PUBLIC.is_dir():
+    app.mount("/", StaticFiles(directory=PUBLIC, html=True), name="site")

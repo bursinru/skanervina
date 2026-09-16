@@ -330,3 +330,22 @@ body{background:#fffdfb}
   .footer-disclaimer span{font-size:12px}
   .footer-disclaimer img{width:44px;flex-basis:44px}
 }
+
+#catalog-search { display: grid; gap: 12px; }
+#wine-query { width: 100%; box-sizing: border-box; padding: 12px; font: inherit; border: 1px solid #ddd; border-radius: 12px; }
+.catalog-result { display: block; width: 100%; padding: 16px 8px; text-align: left; font: inherit; background: transparent; border: 0; border-bottom: 1px solid #eee; cursor: pointer; }
+.catalog-result:hover { background: #f5f5f5; }
+
+/* The cutout is the exact image uploaded to recognition. */
+.processing-overlay{background:radial-gradient(ellipse at center,#553239,#20151bec);backdrop-filter:blur(12px)}
+.label-cutout{position:relative;max-width:70%;height:45%;min-height:100px;filter:drop-shadow(0 16px 24px #0006);animation:label-emerge .65s cubic-bezier(.2,.8,.2,1) both;overflow:hidden;border-radius:8px}
+.label-cutout img{display:block;width:100%;height:100%;object-fit:contain;background:#20191c}
+.label-cutout>span{position:absolute;inset:0 0 auto;height:2px;background:#f9dba2;box-shadow:0 0 18px 5px #efd39d88;animation:label-sweep 2.4s ease-in-out infinite}
+@keyframes label-emerge{from{opacity:0;transform:scale(.72) rotate(-4deg);filter:blur(5px)}to{opacity:1;transform:scale(1) rotate(0);filter:blur(0)}}
+@keyframes label-sweep{0%,100%{top:2%}50%{top:96%}}
+.crop-dialog{width:min(94vw,720px)}#crop-canvas{display:block;max-width:100%;max-height:48vh;width:auto;height:auto;margin:14px auto;touch-action:none;cursor:crosshair;border-radius:8px}
+.crop-fields{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}.crop-fields label{font-size:12px}.crop-fields input{width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:white}
+.admin-tools{max-width:900px;margin:18px auto;padding:16px;border:1px dashed var(--gold);border-radius:10px}.admin-tools label{display:block;font-size:13px}.admin-tools input{width:100%;max-width:480px;padding:8px}.admin-tools p{font-size:12px;color:var(--muted)}
+.admin-diagnostics{margin:24px 0;padding:16px;border:1px dashed var(--gold);border-radius:10px}.admin-diagnostics pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.8 monospace}
+#preview-actions{flex-wrap:wrap}
+@media(prefers-reduced-motion:reduce){.label-cutout,.label-cutout>span{animation:none}.label-cutout>span{top:50%}}

@@ -1,0 +1,5 @@
+-r requirements.txt
+httpx>=0.27,<1
+psycopg[binary]>=3.2,<4
+# Training tests exercise the small PyTorch adapter and seeded augmentations.
+-r requirements-cv.txt

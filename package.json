@@ -6,7 +6,13 @@
   "scripts": {
     "dev": "node scripts/serve.mjs",
     "build": "node scripts/build.mjs",
-    "preview": "node scripts/serve.mjs dist"
+    "preview": "node scripts/serve.mjs dist",
+    "backend": "backend/.venv-cv/bin/python -m uvicorn app.main:app --app-dir backend --env-file backend/.env.local --host 127.0.0.1 --port 8080",
+    "web": "npm --prefix gateway run dev",
+    "build:server": "npm --prefix gateway run build",
+    "test:backend": "PYTHONPATH=backend backend/.venv-cv/bin/python -m unittest discover -s backend/tests"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

@@ -1,50 +1,129 @@
-# Backend распознавания «Своё Вино»
+# Своё Вино: локальный и серверный backend
 
-Это первый backend-MVP. Он не обучает нейросеть: принимает изображение, проверяет его, пытается извлечь текст через Tesseract OCR и ищет совпадение в каталоге CSV. Визуальный поиск можно добавить позже внутри `app/recognition.py`, не меняя HTTP-контракт.
+## Архитектура
 
-## Локальный запуск
+- **Nuxt 4 / Nitro** (`gateway/`) — публичный сервер на порту 3000: единый origin, проксирование только разрешённых маршрутов.
+- **Python / FastAPI** — внутренний сервис карточек, профилей, SigLIP 2 и OCR на порту 8080. Существующий интерфейс раздаётся этим же сервисом через Nuxt; переписывать его на Vue не требуется.
+- **PostgreSQL 17 + pgvector** — карточки JSONB, анонимные профили, векторы 768 измерений и HNSW-индекс.
+- **SigLIP 2** `google/siglip2-base-patch16-224` — локальные image embeddings, cosine nearest neighbours. FixRes checkpoint использует класс `SiglipVisionModel`; revision закреплён в `app/vision.py`.
+- **Tesseract rus+eng** — дополнительное подтверждение текста. При включённом CV отсутствие модели/индекса не маскируется OCR-результатом.
+- **Strapi** — источник каталога. Есть импорт CSV и JSON; отдельная CMS/admin пока не разворачивается.
 
-Нужны Python 3.9+ и системный Tesseract с русским языком (`rus`).
+Фотографии пользователей обрабатываются локально и не сохраняются. При первой индексации скачиваются публичные веса модели; платных API/ключей нет. Бутылки и иллюстрации в интерфейсе пока загружаются с исходного CDN.
 
-```sh
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
- export CATALOG_CSV="../Датасет/strapi_output0709_enriched.csv"
-export CORS_ORIGINS="http://localhost:4173"
-uvicorn app.main:app --reload --port 8080
-```
+## Запуск на этой машине
 
-Проверки:
+Окружение Python установлено в `backend/.venv-cv`, настройки в `backend/.env.local` (не в Git). Из корня проекта:
 
 ```sh
-curl http://127.0.0.1:8080/healthz
-curl -F "image=@../Датасет/eval/queries/019c68d0.jpg" http://127.0.0.1:8080/v1/recognize
+# Если база была остановлена:
+/opt/homebrew/opt/postgresql@17/bin/pg_ctl -D backend/data/postgres \
+  -l backend/data/postgres.log \
+  -o '-k /Users/bursinru/Sites/skanervina/backend/data/socket -p 55432 -h ""' start
+npm run backend
+# В другом терминале:
+npm --prefix gateway run build
+HOST=127.0.0.1 npm --prefix gateway start
+# http://localhost:3000/scanner
 ```
 
-Без установленного Tesseract сервис всё равно запускается, но возвращает `unknown` с причиной `binary_missing`. Это ожидаемое состояние текущего baseline.
+Локальная база слушает только Unix-сокет внутри проекта, не TCP. В ней настроен trust для локального пользователя macOS; серверный вариант ниже использует пароль. Остановка локальной базы: `pg_ctl -D backend/data/postgres stop` с тем же полным путём к pg_ctl.
+
+Для чистой установки нужны Python 3.11+, Tesseract rus+eng, PostgreSQL 17 с pgvector. Создайте venv, установите `requirements-cv.txt`, создайте базу, задайте `DATABASE_URL`, `HF_HOME`, `CV_ENABLED=true`. Пример переменных — `.env.example` в этом каталоге. Nuxt устанавливается через `npm --prefix gateway ci`; совместимый Node закреплён локальной dev-зависимостью, системный Node не заменяется.
+
+```sh
+python3.11 -m venv backend/.venv-cv
+backend/.venv-cv/bin/pip install -r backend/requirements-cv.txt
+# Экспортируйте DATABASE_URL и HF_HOME либо загрузите собственный .env через dotenv.
+PYTHONPATH=backend backend/.venv-cv/bin/python -m app.import_catalog \
+  --catalog Датасет/strapi_output0709_enriched.csv \
+  --index --images Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads
+```
+
+Импорт повторяемый: карточки обновляются по slug, фотографии индексируются повторно только при изменении SHA-256 или модели. Используются только изображения каталога; папка `eval/queries` в индекс не включается. Пропущенные/повреждённые изображения выводятся в итоговом отчёте. После импорта карточек перезапустите Python-сервис: текстовый каталог кешируется в памяти.
+
+## Обычный Linux-сервер: Docker Compose
+
+В Docker локальная база и модели сохраняются в отдельных volumes. GPU не требуется; скорость зависит от CPU. Первый запуск скачивает веса, потребуется несколько гигабайт свободного места. Docker-сборку нужно выполнять **из корня репозитория**.
+
+1. Скопируйте исходники и отдельно `Датасет/` (он исключён из Git).
+2. Создайте корневой `.env`: `POSTGRES_PASSWORD=<случайная длинная hex-строка>`. При HTTPS добавьте `COOKIE_SECURE=true`. Hex-пароль не требует URL-кодирования в DATABASE_URL.
+3. Выполните:
+
+```sh
+docker compose build
+docker compose up -d db
+docker compose run --rm recognition python -m app.import_catalog \
+  --catalog /catalog/strapi_output0709_enriched.csv --index \
+  --images /catalog/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads
+docker compose up -d
+curl http://127.0.0.1:3000/healthz
+```
+
+4. Настройте Nginx/Caddy с HTTPS перед `127.0.0.1:3000`. Пример Nginx: `deploy/nginx.conf.example` (поменяйте домен и добавьте TLS). HTTPS нужен для камеры телефона. Python и PostgreSQL не публикуются наружу.
+
+Данные не удаляются при `docker compose down`; **`down -v` удаляет volumes**. Резервная копия:
+
+```sh
+docker compose exec -T db pg_dump -U scanner -d scanner -Fc > scanner.dump
+# Восстановление в пустую базу с установленным pgvector:
+# docker compose exec -T db pg_restore -U scanner -d scanner < scanner.dump
+```
+
+Для переноса текущих локальных карточек/профилей/векторов используйте `pg_dump` локальной базы и `pg_restore` в контейнер. Повторная индексация тогда не нужна. Веса можно заново скачать в model-cache; пользовательские фотографии там отсутствуют.
 
 ## API
 
-- `GET /healthz` — состояние сервиса и размер каталога.
-- `POST /v1/recognize` — production-контракт для фронтенда; поле multipart `image`.
-- `POST /v1/eval/predict` — совместимость с тестовым скриптом датасета, возвращает только `slug`.
-- `GET /v1/catalog/{slug}` — получить карточку вина из каталога.
+- `GET /healthz` — каталог, хранилище, OCR, готовность CV.
+- `POST /v1/recognize` — multipart `image`, JPG/PNG/WebP до 15 MiB. Возвращает одну карточку при `matched` или `uncertain`; при `unknown` карточки нет. Сомнительный результат явно помечается в интерфейсе.
+- `POST /v1/eval/predict` — тот же поиск, ответ `{slug: string | null}`; сомнительные результаты остаются `null` для совместимости оценки.
+- `GET /v1/search?q=Фанагория` — до 20 кандидатов текстового поиска.
+- `GET /v1/catalog/{slug}` — карточка JSON.
+- `GET /v1/profile` — сохранения/оценки текущего браузера, выдаёт HttpOnly SameSite=Strict cookie.
+- `PUT /v1/profile` — `{saved: [card], ratings: {slug: 1..5}}`, заголовок `X-Scanner-Client: web`. До 100 сохранений и 1000 оценок; общий размер JSON ограничен до разбора.
 
-Обогащённый CSV дополнительно отдаёт публичный рейтинг, цвет, температуру подачи, крепость, гастросочетания, описание и прямой URL изображения. Если эти поля заполнены, backend использует их при формировании карточки. Файлы из датасета не копируются в Docker-образ и не должны попадать в GitHub.
+Профили анонимные: это ещё не аккаунты с входом и синхронизацией между устройствами. Очистка cookie лишает доступа к прежнему профилю. Одновременные изменения из двух вкладок используют последнее сохранение всего профиля. При сетевой ошибке интерфейс сообщает о несохранённом на сервере изменении; локальная копия остаётся в браузере, автоматического offline-sync пока нет.
 
-## Docker
+Без `DATABASE_URL` доступен прежний SQLite/OCR режим для лёгких тестов; он не является рекомендованным CV-стеком.
 
-Собирать образ нужно из каталога `backend`. Каталог с данными монтируется отдельно:
+## Формат JSON / Strapi
 
-```sh
-docker build -t svoe-vino-recognition .
-docker run --rm -p 8080:8080 \
-  -v "$(pwd)/../Датасет:/data:ro" \
-  -e CATALOG_CSV=/data/strapi_output0709_enriched.csv \
-  -e CORS_ORIGINS=http://localhost:4173 \
-  svoe-vino-recognition
+Поддерживаются массив карточек, `{ "wines": [...] }`, `{ "data": [...] }` и элементы `{ "attributes": {...} }` с полями карточки. Обязательны `slug` и `name`:
+
+```json
+[{"slug":"wine-slug","name":"Название","winery":"Винодельня","image_name":"bottle.webp","grapes":["Шардоне"],"public_rating":4.2}]
 ```
 
-На staging/production CSV и индекс распознавания должны приходить из object storage или подключённого volume. Vercel используется для фронтенда, а не для запуска OCR/модели.
+Также принимаются JSON-строки с русскими названиями столбцов CSV. Произвольный внутренний дамп Strapi с отдельными таблицами media/relations требует адаптера к этому формату — не угадываем связи. Отсутствие подходящих записей вызывает ошибку импорта.
+
+## Проверки и ограничения качества
+
+```sh
+backend/.venv-cv/bin/pip install -r backend/requirements-dev.txt
+npm run test:backend
+npm run build
+npm run build:server
+```
+
+Визуальный similarity — мера близости векторов, **не вероятность правильного ответа**. Начальные пороги: `CV_MATCH_THRESHOLD=0.88`, `CV_MATCH_MARGIN=0.04`. При похожих кандидатах возвращается `uncertain`; для уверенного ответа нужны высокий similarity и отрыв от второго кандидата либо подтверждение OCR. Пороги ещё нужно калибровать на размеченных фотографиях полок/этикеток. В предоставленном eval есть три снимка, но правильные slug скрыты организатором: итоговую точность по ним не заявляем.
+
+Технические первоисточники: [SigLIP 2](https://huggingface.co/docs/transformers/v4.57.1/model_doc/siglip2), [pgvector](https://github.com/pgvector/pgvector), [Nuxt server](https://nuxt.com/docs/4.x/directory-structure/server).
+
+## Последняя проверка
+
+Фактические результаты и ограничения: [VALIDATION.md](VALIDATION.md). Для повторной проверки запущенного стека используйте `backend/.venv-cv/bin/python scripts/check_backend.py` из корня проекта. На этой машине и в Compose выбран `CV_DEVICE=cpu`; прогон без GPU выполнен. Замеры CPU, визуального поиска и OCR: [отчёт](../reports/recognition/README.md).
+
+## Обучение
+
+Локальный pipeline обучения и протокол измерений: [reports/training/README.md](../reports/training/README.md). Первый завершённый эксперимент: [adapter-v1](../reports/training/adapter-v1.md). Артефакты обучения находятся в `backend/data/training/` и не входят в Docker/Git; рабочая модель автоматически не заменяется.
+
+
+## Одна карточка, выделение этикетки и диагностика
+
+На фото нажмите «Выделить этикетку», обведите её мышью/пальцем или задайте четыре границы в процентах. После «Оставить этикетку» отправляются только выбранные пиксели (JPEG, не более 2400 px по длинной стороне). Для возврата к исходному кадру загрузите его снова. Это ручное выделение, а не обученная автоматическая сегментация. Анимация использует ту же картинку, что и поиск, и учитывает reduced motion.
+
+Администратор открывает `/scanner?admin=1` и вводит значение `SCANNER_ADMIN_TOKEN` из `backend/.env.local`. Для сервера задайте эту переменную в корневом `.env`, Compose передаст её сервису recognition. Ключ не добавляется в URL, не сохраняется в localStorage и не входит в Git. После изменения ключа перезапустите Python-сервис. Пустая переменная отключает доступ к диагностике.
+
+В запрос передаётся `X-Scanner-Admin`. Без ключа API скрывает confidence, similarity и timings; неверный ключ даёт HTTP 403. Панель показывает сходство SigLIP в процентах, отрыв от второго соседа, время visual/OCR/total на сервере и полное ожидание в браузере. OCR score — оценка текстового сопоставления, а не уверенность Tesseract. Обе оценки не являются вероятностью правильного распознавания. Нет необходимости давать этот ключ посетителям; отдельной Strapi CMS-админки этот режим не заменяет.
+
+На сервере используйте HTTPS. Внешние сервисы OCR не нужны: Tesseract работает локально. Для лучшего качества дальше нужны размеченные реальные фото с правильными slug, в том числе блики, разные ракурсы, похожие этикетки и вина вне каталога. Обученный экспериментальный адаптер пока не используется в публичном поиске.

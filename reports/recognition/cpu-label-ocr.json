@@ -1,0 +1,375 @@
+{
+  "created_at": "2026-09-16T08:50:23Z",
+  "platform": "macOS-26.3-arm64-arm-64bit",
+  "device": "CPU (API must be started with CV_DEVICE=cpu)",
+  "cpu": "Apple M1",
+  "notes": [
+    "Manual label rectangles fixed before running search.",
+    "Query slugs are withheld; no real-world accuracy is calculated.",
+    "Reference self-retrieval is not an independent accuracy test.",
+    "Sequential requests, no concurrent browser scans; model is already loaded."
+  ],
+  "queries": [
+    {
+      "file": "019c68d0.jpg",
+      "sha256": "c975b31e13bfa77dbc402d7ae4cd3889609cf85a9dadda45778a63232b4c6acf",
+      "visible_text_manual": "Табия, Пино Нуар, полусухое, 2025",
+      "crop_normalized": [
+        0.25,
+        0.35,
+        0.79,
+        0.83
+      ],
+      "variants": {
+        "full": {
+          "wall_ms": 8204.9,
+          "status": "uncertain",
+          "slug": "oleg",
+          "name": "Олег",
+          "method": "siglip2+pgvector+ocr",
+          "similarity": 0.7142,
+          "margin": 0.003,
+          "ocr": "ok",
+          "ocr_characters": 253,
+          "ocr_best": {
+            "slug": "cock-test-belle-kyuve-2-blan-de-nuar-pino-mene-beloe-ekstra-bryut-12",
+            "score": 0.0696
+          },
+          "ocr_corroborated": false,
+          "timings_ms": {
+            "visual": 6202.3,
+            "ocr": 1852.5,
+            "total": 8116.4
+          },
+          "threshold": 0.88,
+          "min_margin": 0.04,
+          "ocr_comparison": {
+            "6": {
+              "text": "= iS =i > # :\n— =\n= Е\nЕЕ\n= z= =\n= =o 2, Sa: aes\n= | = SUNOAEAL NS Я ai s |\n== = VX0e a or р \\ ‚м 2\n= Е “945 mY Seb + eS |\nee | А, о\nXG JN sat ey’ Be\nee oe < Aig | >\n<4 See 2 а | в. _\n| Ve ae eee. 6 a\n\\ к у ь\n| | Ss i | 4 3 x U ond ‘\n\\ in. wi. : a ee < М",
+              "ocr_ms": 1474.8,
+              "top1_slug": "cock-test-belle-kyuve-2-blan-de-nuar-pino-mene-beloe-ekstra-bryut-12",
+              "top1_score": 0.0696
+            },
+            "11": {
+              "text": "Su\n\n$\n\n4\n\nГ“\n\n=\n\n=\n\n=\n\n4\n\n#9\n\na\n\nз=\n\n&-\n\n—\n\n= <\n\n==\n\nSs\n\nв,\n\n=e\n\n==\n\n==\n\n<=\n\n==\n\nх ®\n\ncz\n\n==\n\n=.\n\n==\n\n—\n\n==\n\n<=\n\nz=\n\n<u\n\nЗа\n\n55\n\n=“\n\nВино\n\nОДЕЛЬНЯ\n\n“4 ¥\n\n—\n\n1\n\nXO¢\n\nert\n\nSN\n\nA\n\n<)\n\nА\n\n<“\n\n—\n\nSS\n\n———\\\n\nFe\n\nв\n\nа\n\n—\n\n>\n\nSs\n\n———\n\n—\n\n=\n\n¥\n\n. Ss\n\n—.\n\nws\n\n“=\n\n>\n\n<a\n\nSS\n\nww\n\n3\n\nIS\n\nAS 5 eee”\n\n9\n\n4\n\n<=\n\n>\n\n\\ Se. SOS ss\n\nу\n\n5,4\n\npo?\n\nee,\n\n|\n\nй\n\nг.)\n\nА\n\nд:\n\n6)\n\nв\n\n\\\\\n\nLAY\n\n=\n\nА\n\nat\n\nwe\n\n7 )\n\nsore)\n\n1\n\nNe\n\na\n\n2541",
+              "ocr_ms": 1411.7,
+              "top1_slug": "soyuz-vino-lak-dazyur-blan-sek-belye-sorta-vinograda-beloe-suhoe-11",
+              "top1_score": 0.079
+            }
+          }
+        },
+        "label": {
+          "wall_ms": 7003.2,
+          "status": "uncertain",
+          "slug": "bakla-vines-pino-nuar-krasnoe-suhoe-125",
+          "name": "Пино Нуар",
+          "method": "siglip2+pgvector+ocr",
+          "similarity": 0.6674,
+          "margin": 0.0076,
+          "ocr": "ok",
+          "ocr_characters": 196,
+          "ocr_best": {
+            "slug": "aya-organic-wine-vineyards-purity-in-trinity-pino-nuar-rozovoe-suhoe-13",
+            "score": 0.073
+          },
+          "ocr_corroborated": false,
+          "timings_ms": {
+            "visual": 5563.0,
+            "ocr": 1389.4,
+            "total": 6967.2
+          },
+          "threshold": 0.88,
+          "min_margin": 0.04,
+          "ocr_comparison": {
+            "6": {
+              "text": "^ |\n= »\nSas УЗ, ое |\nSS У » пса\nse > Nv oo” i |\n=! = Gr- >=. — a 3\n= ¥ é. \\ > j ~ «< чо} 3\nat < РЯ > é we OS My # м >\n~ - ae ale 2 SS. a) ay /\n{ ь < AI ef ` Ay) |\nох = 7 ft",
+              "ocr_ms": 946.9,
+              "top1_slug": "stn-winery-chardonnay-vol2-shardone-beloe-suhoe-105",
+              "top1_score": 0.0816
+            },
+            "11": {
+              "text": "\\.\n\nrs\n\nIN\n\nPrt\n\n>\n\naN\n\nenw Nts\n\nв\n\n2\\\\\n\nя\n\nSAWN\n\n»\n\nad\n\nNeat\n\na J\n\n>> <\n\n=\n\nС.\n\n=\n\n$\n\nCAD\n\nК;\n\na\n\ni)\n\neis\n\n«<\n\nel\n\nро\n\n>~-\n\n7 Ag\n\n9\n\nN\n\n59)\n\naC\n\nwey\n\n=>.\n\n<< =\n\nCF\n\nWoe\n\nI\n\nos\n\nNui\n\nva\n\n=)\n\nа\n\n—\n\n$9\n\n< \\\n\n= a\n\nwo\n\nee\n\na\n\nes\n\nAY’\n\nJ >\n\n\\\\\n\nХх\n\n<)\n\n——\n\nГА\n\nae\n\nae",
+              "ocr_ms": 914.2,
+              "top1_slug": "aya-organic-wine-vineyards-purity-in-trinity-pino-nuar-rozovoe-suhoe-13",
+              "top1_score": 0.0778
+            }
+          }
+        }
+      }
+    },
+    {
+      "file": "02eef911.webp",
+      "sha256": "8c760f87c8940934bfd19020d90aa949f843267c47a99180bdd41242a5033a36",
+      "visible_text_manual": "Массандра, Мускатель Массандра белый, 2023",
+      "crop_normalized": [
+        0.26,
+        0.19,
+        0.71,
+        0.79
+      ],
+      "variants": {
+        "full": {
+          "wall_ms": 8984.8,
+          "status": "uncertain",
+          "slug": "massandra-muskat-belyy-yuzhnoberezhnyy-beloe-sladkoe-16",
+          "name": "Мускат Белый Южнобережный",
+          "method": "siglip2+pgvector+ocr",
+          "similarity": 0.7837,
+          "margin": 0.0025,
+          "ocr": "ok",
+          "ocr_characters": 582,
+          "ocr_best": {
+            "slug": "kuban-vino-aristov-8-roze-07-merlo-rozovoe-suhoe-8",
+            "score": 0.0527
+          },
+          "ocr_corroborated": false,
+          "timings_ms": {
+            "visual": 5343.8,
+            "ocr": 3383.4,
+            "total": 8961.0
+          },
+          "threshold": 0.88,
+          "min_margin": 0.04,
+          "ocr_comparison": {
+            "6": {
+              "text": "А |. А . ‘eres Di BA р\n\n| (1 ae . р 2\nSOSSSTMESen = о — ПРОИЗВОДСТВЕННО-АР\nTATA в ap << =! САН 1 р A | О —ч |\n_ А №. ‘ _ ЗЕМ SS Sra = & 3 РОЯ\nи Е | i) -_ + al\n: | = ee oY РЕ\n8.28 7 gama Е. 2:2 ‚===\n| | eee ee\nbi Е i т | Е. Е ee\n| — 4 ЕЕ ЕЕ #3 eee - О СЕНЕ ЕЕ Е\nА И В М _ ЕЕ\nи о ao\na ae I ees rs НТ a НИИ ЕЕ\nАЕ а eet ene Spee\nHeer cad pic iE ate И Be Pe a.\nSea вы | = meet ie ee 8 ee ee 2 Zz ; _ Е ВЕ\na р TOR основания | = ee ae eae\nSe M ВИНО POCCHY Ab . А, Wa\nTOA, УРОЖАЯ ~ SSC IY\n№ 20 23 07 em ees\n\\ f Seon SSaisae\n9777 Зи pyyyg Crurpayie \\ + eae LEG\n\nь. “\n\\ ig ie\n\n+ а : See a : а",
+              "ocr_ms": 2915.1,
+              "top1_slug": "kuban-vino-aristov-8-roze-07-merlo-rozovoe-suhoe-8",
+              "top1_score": 0.0527
+            },
+            "11": {
+              "text": "ve\n\n_\n\n\\ а\n\n®\n\n`“\n\n\\\\\n\ni\n\npee\n\na\n\n$ 1\n\n,\n\n——\n\n5\n\n8 =\n\nЕ\n\nтия\n\n——----\n\nrb.\n\nSS\n\nПРОИЗВОДСТВЕНИО.\n\nЖе\n\nыы.\n\n==\n\n=e\n\n>\n\nА\n\n- -\n\nЯЗ\n\n—\n\n=\n\nAPA\n\n=e\n\nA\n\n/\n\nAC\n\neae\n\nrad\n\na\n\ners\n\na\n\n22\n\nod\n\nSole\n\nAsk\n\n= =\n\neee\n\nwr ov\n\noth,\n\nPn,\n\nAe\n\n[:*8-\n\nУ\n\nРЕЯ\n\nES\n\n2.5\n\n=\n\nom\n\neke\n\n=f?\n\n22\n\nРВ\n\nИ:\n\nij\n\nae\n\n5\n\n[9\n\nlies\n\nis\n\n2 Be\n\na\n\nRe\n\nes,\n\nЯ\n\nBES\n\nice\n\nу\n\ntis\n\nid\n\nEt\n\nat\n\na\n\n=\n\nBs\n\nae\n\nTog\n\nоснования\n\nд 0\n\nLf HO\n\n.\n\n1334\n\n=\n\nВИНО РОССИИ =\n\nHO PO\n\n}\n\nСКАТЕ\n\nb\n\n=\n\nEAb\n\nЕ\n\nPA |\n\n[=\n\nAPA\n\nCCAHA\n\na Se\n\nБЕЛЫЙ\n\nGe\n\nт]\n\n=\n\n=]\n\n[i\n\nГОД УРОЖАЯ\n\n==)\n\ni\n\n<\n\nof\n\n0,794\n\n2023\n\nWty\n\n277\n\nПерри дно\n\n—._\n\nee\n\n—\n\nRae\n\nwae\n\nCts,\n\n—=\n\nCul”\n\n£\n\nHa\n\n~\n\n—\n\nни\n\n—\n\n—",
+              "ocr_ms": 1900.2,
+              "top1_slug": "igristoe-zhemchuzhnoe-vino-polusladkoe-rozovoe-di-kaspiko-fiori-di-mare-di-caspico-fiori-di-mare",
+              "top1_score": 0.0589
+            }
+          }
+        },
+        "label": {
+          "wall_ms": 6643.2,
+          "status": "uncertain",
+          "slug": "massandra-muskatel-rozovyy-belye-sorta-vinograda-rozovoe-sladkoe-16",
+          "name": "Мускатель розовый",
+          "method": "siglip2+pgvector+ocr",
+          "similarity": 0.7832,
+          "margin": 0.025,
+          "ocr": "ok",
+          "ocr_characters": 145,
+          "ocr_best": {
+            "slug": "shato-pino-agpoezdnik-krasnoe-kaberne-fran-suhoe-14",
+            "score": 0.0899
+          },
+          "ocr_corroborated": false,
+          "timings_ms": {
+            "visual": 5120.4,
+            "ocr": 1458.2,
+            "total": 6601.0
+          },
+          "threshold": 0.88,
+          "min_margin": 0.04,
+          "ocr_comparison": {
+            "6": {
+              "text": "|\nety Е ee ee\nSaget lo olen cl cele\na=. зенования\nMYC} РОССИИ b\nБЕЛЫЙ\nRi. ГОД УРОЖАЯ 7\nв 29 of\nГ 7 РИ 2772773 дор и и",
+              "ocr_ms": 1323.4,
+              "top1_slug": "valerij-zaharin-kokur-i-ko-beloe-bryut",
+              "top1_score": 0.1167
+            },
+            "11": {
+              "text": "wa\n\n6 А $\n\nут\n\nSe\n\n— эк ee\n\n=== «=\n\nу“\n\nча\n\n=\n\nоч\n\nи =\n\ncant\n\n= =\n\n„ -\n\n--\n\n= 53\n\nты\n\n=\n\n===.“\n\n=.\n\nZo\n\n3\n\nЕ.\n\nт\n\n[25 22\n\n>>.\n\nре\n\nУсы\n\n7!\n\nЕ\n\n#9 4875\n\nрес\n\n2}\n\n=\n\nТЫ\n\nif\n\nр\n\nЯ\n\n=\n\nay\n\nAl\n\ni)\n\nfi\n\noe.\n\nЕ\n\nНАУ\n\n№\n\n~~\n\nree\n\ncay)\n\n4%\n\nff RE\n\nEE or |\n\ncae\n\n73.\n\nЭа.\n\n4\n\n+L\n\nBE:\n\nя.\n\n2\n\nАУ\n\nкаже\n\nhd\n\nSee\n\n=.\n\nrag\n\nBy\n\nWe\n\nSF\n\na ея\n\n22\n\niB\n\nЕ\n\nРТ\n\n5 =\n\n8:\n\non\n\nGf es\n\nя\n\n=,\n\n2S\n\nЕ\n\nЕР. =.\n\nр\n\nPog\n\nоснования\n\nBUHO РОССИИ\n\nMYCKATEAR\n\nMA\n\nCCAHAPA\n\nБЕЛЫ\n\nГОД, УРОЖАЯ\n\n4\n\n14\n\n0),\n\n2923\n\nНР,\n\n7.272270 Y Wii\n\nUitte ihe и",
+              "ocr_ms": 2000.2,
+              "top1_slug": "pinot-noir-2024-one-barrel-by-dmitry-maslov-pino-nuar-2024-uan-barrel-dmitrij-maslov",
+              "top1_score": 0.0545
+            }
+          }
+        }
+      }
+    },
+    {
+      "file": "096ca74e.jpg",
+      "sha256": "f84ac48acf05212cb213db4540b68a0afdb1a16308797d4fa1d5edeb4df8725e",
+      "visible_text_manual": "Aristov, Donum XXIV, брют, 2023",
+      "crop_normalized": [
+        0.21,
+        0.24,
+        0.83,
+        0.73
+      ],
+      "variants": {
+        "full": {
+          "wall_ms": 3926.0,
+          "status": "uncertain",
+          "slug": "shato-pino-shardone-beloe-suhoe-125",
+          "name": "Шардоне",
+          "method": "siglip2+pgvector+ocr",
+          "similarity": 0.701,
+          "margin": 0.0233,
+          "ocr": "ok",
+          "ocr_characters": 659,
+          "ocr_best": {
+            "slug": "pomeste-golubitskoe-tte-de-cheval-bryut-risling-reynskiy-beloe-12",
+            "score": 0.0412
+          },
+          "ocr_corroborated": false,
+          "timings_ms": {
+            "visual": 1532.9,
+            "ocr": 2166.1,
+            "total": 3878.4
+          },
+          "threshold": 0.88,
+          "min_margin": 0.04,
+          "ocr_comparison": {
+            "6": {
+              "text": "pat we OFT OE te! ef eee, 5 ae ot - * %\nWg Vio ley ee eee eg Ana Sete ae fac 4 к\nИЕ 4 и Я ь eo AF =... >. ie\nEE * Ме, a ig +r ge th ake tne | ‘\nioe 2 oe и. Sabena ag Ва a, ae 2 том хх > \\\n6 : ad sae “= $ к\" ` > W\n6 т 52 :? a oh: - = м h\nx f “ rm - =F 2 7 Hates\n“a : : nee\n\" с р = 3 ПА ie\nВ * = Ae .\ngalas gga x x Ba я у i «\n: i: De :\n> FS\necg x ‚бах Вы м я i a ie\naa “Ta у sae iv ;\nм Са > м ух Я\nЗЕРЖКА 24 МЕСТ\"\nы и }\nРАС, A р bind Fj\n/ thf gre }\n: Е / { \\\nи / / ПР fad № 2\n/ 7 у И f # 7 р | | 1\n/. Z 4, $ у , } |\n7 { р И 4 j i } ; |\nЯ f ad j i | у | N bh \\ aN) И\nLILLE J 7 ей: PT WC ELM, | И\n‘ A / iff f f я 7 4 fy ay . и\nj GA fA | : | | } Я ve Li\nА у # ae a",
+              "ocr_ms": 1991.4,
+              "top1_slug": "pomeste-golubitskoe-tte-de-cheval-bryut-risling-reynskiy-beloe-12",
+              "top1_score": 0.0412
+            },
+            "11": {
+              "text": "ips\n\nwe\n\nPo\n\n№4\n\nкв\n\n>»\n\nvie\n\noe\n\n<\n\nуу\n\n2 =\n\nme\n\n2255\n\n“Low\n\nor\n\n<2\n\n<=\n\n44\n\nК.\n\nр\n\n2\n\nas\n\n\\\n\n==\n\nas\n\nst\n\n№.\n\n= >.\n\nH\n\nPa\n\nane\n\nih\n\nу\n\nми\n\nый.\n\nry\n\nguest:\n\naa,\n\n‘bs\n\nme .\n\nm\n\n_ =\n\nyA\n\nSar\n\nи»\n\nyt\n\nxa\n\n>a\n\nae\n\n|\n\nyi)\n\nwd\n\nrs\n\nсе\n\n=\n\ns\n\n=\n\nВЫДЕ P>\n\n[<\n\nй\n\n#.\n\nY\n\ni\n\n4\n\n4\n\nг\n\nhi\n\n/\n\nут\n\n|",
+              "ocr_ms": 962.0,
+              "top1_slug": "bogovich-wine-vineyard-pino-nuar-2-krasnoe-suhoe-12",
+              "top1_score": 0.0711
+            }
+          }
+        },
+        "label": {
+          "wall_ms": 6467.8,
+          "status": "unknown",
+          "slug": null,
+          "name": null,
+          "method": "siglip2+pgvector+ocr",
+          "similarity": 0.6398,
+          "margin": 0.0071,
+          "ocr": "ok",
+          "ocr_characters": 28,
+          "ocr_best": {
+            "slug": "arie",
+            "score": 0.2015
+          },
+          "ocr_corroborated": false,
+          "timings_ms": {
+            "visual": 5289.5,
+            "ocr": 1105.2,
+            "total": 6396.3
+          },
+          "threshold": 0.88,
+          "min_margin": 0.04,
+          "ocr_comparison": {
+            "6": {
+              "text": "ев\nо.\na oe }",
+              "ocr_ms": 763.8,
+              "top1_slug": "shato-pino-agpoezdnik-beloe-shardone-suhoe-13",
+              "top1_score": 0.2266
+            },
+            "11": {
+              "text": "——————— Sag\n\nSee a oes Se\n\n*\n\nre\n\nARISTOV\n\nОУ\n\nj",
+              "ocr_ms": 1250.8,
+              "top1_slug": "shato-pino-agpoezdnik-beloe-shardone-suhoe-13",
+              "top1_score": 0.1523
+            }
+          }
+        }
+      }
+    }
+  ],
+  "references": [
+    {
+      "expected": "a-gordienko-m-nikolaev-pino-nuar-krasnoe-suhoe-135",
+      "correct": true,
+      "wall_ms": 3607.8,
+      "status": "matched",
+      "slug": "a-gordienko-m-nikolaev-pino-nuar-krasnoe-suhoe-135",
+      "name": "Пино Нуар",
+      "method": "siglip2+pgvector+ocr",
+      "similarity": 1.0,
+      "margin": 0.1257,
+      "ocr": "ok",
+      "ocr_characters": 35,
+      "ocr_best": {
+        "slug": "shato-pino-agpoezdnik-krasnoe-kaberne-fran-suhoe-14",
+        "score": 0.1951
+      },
+      "ocr_corroborated": false,
+      "timings_ms": {
+        "visual": 3363.9,
+        "ocr": 222.2,
+        "total": 3589.9
+      },
+      "threshold": 0.88,
+      "min_margin": 0.04
+    },
+    {
+      "expected": "a-gordienko-m-nikolaev-sira-nuvo-krasnoe-suhoe-115",
+      "correct": true,
+      "wall_ms": 262.2,
+      "status": "matched",
+      "slug": "a-gordienko-m-nikolaev-sira-nuvo-krasnoe-suhoe-115",
+      "name": "Сира Нуво",
+      "method": "siglip2+pgvector+ocr",
+      "similarity": 1.0,
+      "margin": 0.168,
+      "ocr": "ok",
+      "ocr_characters": 9,
+      "ocr_best": {
+        "slug": "fanagoriya-brule-cuve-brut-rozovoe-merlo-igristoe-bryut-rozovoe-12",
+        "score": 0.3929
+      },
+      "ocr_corroborated": false,
+      "timings_ms": {
+        "visual": 114.4,
+        "ocr": 141.3,
+        "total": 256.3
+      },
+      "threshold": 0.88,
+      "min_margin": 0.04
+    },
+    {
+      "expected": "abrau-dyurso-abrau-durso-brut-rose-reserve-pino-nuar-beloe-bryut-12",
+      "correct": true,
+      "wall_ms": 359.0,
+      "status": "matched",
+      "slug": "abrau-dyurso-abrau-durso-brut-rose-reserve-pino-nuar-beloe-bryut-12",
+      "name": "Abrau-Durso Brut Rose Reserve",
+      "method": "siglip2+pgvector+ocr",
+      "similarity": 1.0,
+      "margin": 0.0429,
+      "ocr": "ok",
+      "ocr_characters": 18,
+      "ocr_best": {
+        "slug": "domaine-lipko-white-blend-tsitronnyy-magaracha-beloe-suhoe-115",
+        "score": 0.0616
+      },
+      "ocr_corroborated": false,
+      "timings_ms": {
+        "visual": 113.1,
+        "ocr": 146.9,
+        "total": 353.7
+      },
+      "threshold": 0.88,
+      "min_margin": 0.04
+    }
+  ],
+  "health": {
+    "status": "ok",
+    "catalog_loaded": true,
+    "catalog_size": 2103,
+    "catalog_error": null,
+    "ocr_available": true,
+    "storage": "postgresql",
+    "database_available": true,
+    "visual_search": "ready",
+    "indexed_images": 2036
+  },
+  "full_summary": {
+    "wall_ms": 8204.9,
+    "server_median_ms": 8116.4,
+    "visual_median_ms": 5343.8,
+    "ocr_median_ms": 2166.1
+  },
+  "label_summary": {
+    "wall_ms": 6643.2,
+    "server_median_ms": 6601.0,
+    "visual_median_ms": 5289.5,
+    "ocr_median_ms": 1389.4
+  }
+}
