@@ -192,14 +192,15 @@ class Recognizer:
             min_margin = float(os.getenv('CV_MATCH_MARGIN', '0.04'))
             text, ocr_status, text_matches, ocr_ms = "", "skipped", [], 0.0
             corroborated = False
-            if mode == "combined":
+            ocr_enabled = os.getenv('CV_OCR_ENABLED', 'false').lower() == 'true'
+            if mode == "combined" and ocr_enabled:
                 ocr_started = perf_counter()
                 text, ocr_status = self._ocr(self._image_bytes(work_image), psm=6)
                 ocr_ms = (perf_counter() - ocr_started) * 1000
                 text_matches = self._text_matches(text)
                 corroborated = bool(text_matches and text_matches[0].wine.slug == best['slug'] and text_matches[0].score >= self.MATCH_THRESHOLD and self._text_evidence(text_matches[0]))
             matched = wine and best['score'] >= threshold and (margin >= min_margin or corroborated)
-            method = "siglip2+pgvector+ocr" if mode == "combined" else "siglip2+pgvector"
+            method = "siglip2+pgvector+ocr" if (mode == "combined" and ocr_enabled) else "siglip2+pgvector"
             metrics = base_metrics(method)
             metrics.update(
                 similarity=round(best['score'], 4),

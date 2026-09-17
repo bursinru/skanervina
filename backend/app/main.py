@@ -96,6 +96,7 @@ def healthz() -> Dict[str, Any]:
         "catalog_size": catalog.size if catalog else 0,
         "catalog_error": "Catalog unavailable" if catalog_error else None,
         "ocr_available": bool(shutil.which("tesseract")),
+        "ocr_in_search": os.getenv("CV_OCR_ENABLED", "false").lower() == "true",
         "storage": "postgresql" if os.getenv("DATABASE_URL") else "sqlite",
         "database_available": database_ok,
         "visual_search": recognizer.visual_status if recognizer else "unavailable",

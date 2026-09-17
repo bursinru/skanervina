@@ -23,6 +23,7 @@ services:
       STATIC_DIR: /app/public
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       CV_ENABLED: "true"
+      CV_OCR_ENABLED: "false"
       HF_HOME: /models
       CV_DEVICE: cpu
       SCANNER_ADMIN_TOKEN: ${SCANNER_ADMIN_TOKEN:-}

@@ -346,7 +346,7 @@ function startProcessingLog() {
   processingTimer = setInterval(updateProcessingElapsed, 100);
   addProcessingLog('Фото принято');
   addProcessingLog('Запрос отправлен в распознавание');
-  addProcessingLog('Сервер выполняет автоматический crop, поиск по изображению и OCR');
+  addProcessingLog('Сервер выполняет автоматический crop и поиск по изображению');
 }
 function stopProcessingLog() {
   clearInterval(processingTimer);
@@ -381,12 +381,12 @@ function renderScanDebug({ result, elapsed }) {
     ['Вырезание crop', timingValues.labelCrop, 'вырезание найденной области'],
     ['Подготовка изображения', timingValues.enhancement, 'контраст/резкость для enhanced-режима'],
     ['Изображение', timingValues.visual, 'SigLIP-вектор + поиск ближайших в каталоге'],
-    ['OCR', timingValues.ocr, 'Tesseract и сопоставление распознанного текста'],
+    ...(metrics.ocr && metrics.ocr !== 'skipped' ? [['OCR', timingValues.ocr, 'Tesseract и сопоставление распознанного текста']] : []),
     ['Остальное backend', backendOther, 'сборка ответа и операции, не выделенные отдельно'],
     ['Загрузка, сеть и браузер', browserOther, 'разница между полным ожиданием и backend'],
   ];
   const detailMarkup = detailRows.map(([label, value, note]) => `<div class="scan-debug-detail-row"><div><strong>${label}</strong><small>${note}</small></div><b>${timing(value)}</b></div>`).join('');
-  return `<section class="scan-debug" aria-label="Диагностика сканирования"><div class="scan-debug-heading"><div><small>DEBUG · РЕЗУЛЬТАТ СКАНИРОВАНИЯ</small><h2>Технические показатели</h2></div><span class="scan-debug-status">${escape(status)}</span></div><div class="scan-debug-metrics"><div><small>СОВПАДЕНИЕ</small><strong>${score}</strong><em>${scoreNote}</em></div><div><small>СКОРОСТЬ</small><strong>${formatElapsed(elapsed)}</strong><em>полное ожидание в браузере</em></div><div><small>СЕРВЕР</small><strong>${timing(serverTotal)}</strong><em>распознавание backend</em></div></div><div class="scan-debug-details"><h3>Разбивка времени</h3>${detailMarkup}</div><p class="scan-debug-footnote">В режиме «combined» поиск по изображению — основной результат, а OCR дополнительно проверяет текст этикетки. Время «Загрузка, сеть и браузер» — расчётная разница, а не отдельный замер.</p></section>`;
+  return `<section class="scan-debug" aria-label="Диагностика сканирования"><div class="scan-debug-heading"><div><small>DEBUG · РЕЗУЛЬТАТ СКАНИРОВАНИЯ</small><h2>Технические показатели</h2></div><span class="scan-debug-status">${escape(status)}</span></div><div class="scan-debug-metrics"><div><small>СОВПАДЕНИЕ</small><strong>${score}</strong><em>${scoreNote}</em></div><div><small>СКОРОСТЬ</small><strong>${formatElapsed(elapsed)}</strong><em>полное ожидание в браузере</em></div><div><small>СЕРВЕР</small><strong>${timing(serverTotal)}</strong><em>распознавание backend</em></div></div><div class="scan-debug-details"><h3>Разбивка времени</h3>${detailMarkup}</div><p class="scan-debug-footnote">Поиск идёт по изображению (SigLIP). OCR в обычном режиме выключен. Время «Загрузка, сеть и браузер» — расчётная разница, а не отдельный замер.</p></section>`;
 }
 function showDiagnostics(result, elapsed) {
   if (!debugMode) return;
