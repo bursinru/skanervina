@@ -1,4 +1,3 @@
-import { initLabelCrop } from '/crop.js';
 const $ = (id) => document.getElementById(id);
 const paths = {
   wine: '<path d="M7 3h10l1 7a6 6 0 0 1-12 0zM12 16v5M8 21h8M7 9h10"/>',
@@ -252,7 +251,7 @@ function updateControls(mode) {
   const description = $('control-description');
   const fileNote = $('file-note');
   if (title) title.textContent = { initial:'Начнём с этикетки', preview:'Этикетка хорошо видна?', camera:'Поймайте этикетку в рамку' }[mode];
-  if (description) description.textContent = { initial:'Сфотографируйте бутылку или выберите снимок.', preview:'Название и производитель должны читаться.', camera:'Держите телефон ровно и избегайте бликов.' }[mode];
+  if (description) description.textContent = { initial:'Сфотографируйте бутылку или выберите снимок.', preview:'Система автоматически выделит этикетку перед поиском.', camera:'Держите телефон ровно и избегайте бликов.' }[mode];
   if (fileNote) fileNote.hidden = mode !== 'initial';
 }
 async function selectPhoto(file) {
@@ -318,10 +317,6 @@ function formatRating(value) {
 const ratingGlass = () => '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="rating-glass-body" d="M7 3h10l1 7a6 6 0 0 1-12 0z"/><path d="M7 3h10l1 7a6 6 0 0 1-12 0zM12 16v5M8 21h8"/></svg>';
 const adminMode = new URLSearchParams(location.search).get('admin') === '1';
 $('admin-tools').hidden = !adminMode;
-initLabelCrop({ getPhoto: () => controller ? null : photo, onApply: async file => {
-  await selectPhoto(file);
-  $('viewfinder-caption').textContent = 'Выделенная этикетка · готова к поиску';
-}, onError: notice });
 function showDiagnostics(result, elapsed) {
   if (!adminMode || !$('admin-token').value) return;
   const details = document.createElement('details'); details.className = 'admin-diagnostics'; details.open = true;
@@ -338,6 +333,7 @@ function showDiagnostics(result, elapsed) {
     `OCR: ${metrics.ocr || metrics.reason || '—'} · подтверждает результат: ${metrics.ocr_corroborated ? 'да' : 'нет'}`,
     `Оценка текстового поиска: ${Number.isFinite(metrics.ocr_best?.score) ? (metrics.ocr_best.score * 100).toFixed(1) + '%' : '—'}`,
     `Отрыв от следующего: ${Number.isFinite(metrics.margin) ? (metrics.margin * 100).toFixed(2) + ' п.п.' : '—'}`,
+    `Автоматическое выделение: ${metrics.label_detection?.confidence ? `готово · ${(metrics.label_detection.confidence * 100).toFixed(1)}%` : '—'}`,
   ];
   const text = document.createElement('pre'); text.textContent = lines.join('\n'); details.append(text);
   document.querySelector('.admin-diagnostics')?.remove();
@@ -361,7 +357,7 @@ $('recognize').onclick = async () => {
     if (!response.ok) throw new Error('service');
     const result = await response.json();
     if (result.status === 'unknown') {
-      notice('Не удалось найти достаточно похожую этикетку. Выделите её крупнее, без бликов, и попробуйте ещё раз.');
+      notice('Не удалось найти достаточно похожую этикетку. Переснимите бутылку крупнее, без бликов и соседних бутылок.');
       showDiagnostics(result, performance.now() - started);
       return;
     }
@@ -397,7 +393,7 @@ function showWine(wine) {
     return `<article class="dish-card">${dishImage ? `<img src="${escape(dishImage)}" alt="" loading="lazy">` : '<span class="dish-placeholder">Вино и еда</span>'}<strong>${escape(dish)}</strong></article>`;
   }).join('');
   $('result-screen').innerHTML = `
-    <div class="result-top"><button class="text-button" id="back-to-scanner">${icon('arrow-left')} К сканеру</button><span class="demo-badge">${wine.demo ? 'Пример карточки · не результат сканирования' : wine.manualSelection ? 'Выбрано вами' : wine.uncertain ? 'Наиболее похожее · проверьте название' : 'Вино найдено'}</span></div>
+    <div class="result-top"><button class="text-button" id="back-to-scanner">${icon('arrow-left')} К сканеру</button><span class="demo-badge">${wine.demo ? 'Пример карточки · не результат сканирования' : wine.uncertain ? 'Наиболее похожее · проверьте название' : 'Вино найдено'}</span></div>
     <div class="result-layout"><div class="wine-portrait">${image ? `<img src="${escape(image)}" alt="${escape(wine.name)}"/>` : '<span>Фото пока нет</span>'}<button class="portrait-save icon-action" id="save-wine" type="button" aria-label="Сохранить вино">${icon('bookmark')}</button><span class="portrait-caption">СВОЁ ВИНО · РОССИЙСКИЕ ВИНОДЕЛЬНИ</span></div>
     <div class="wine-details"><p class="eyebrow">${escape(wine.winery)}</p><h1>${escape(wine.name)}</h1><p class="wine-category">${escape(wine.category || '')}${wine.region ? ' · ' + escape(wine.region) : ''}</p>
     ${visualFacts ? `<section class="catalog-visuals" aria-label="Характеристики из каталога"><div class="visual-facts">${visualFacts}</div></section>` : ''}

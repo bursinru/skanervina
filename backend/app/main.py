@@ -124,7 +124,7 @@ def require_service() -> Recognizer:
 inference_slots = asyncio.Semaphore(2)
 
 
-async def recognize_upload(image: UploadFile) -> Dict[str, Any]:
+async def recognize_upload(image: UploadFile, mode: str = "combined", include_candidates: bool = False) -> Dict[str, Any]:
     allowed_types = {"image/jpeg", "image/png", "image/webp"}
     if image.content_type not in allowed_types:
         raise HTTPException(
@@ -143,7 +143,7 @@ async def recognize_upload(image: UploadFile) -> Dict[str, Any]:
     except asyncio.TimeoutError:
         raise HTTPException(429, 'Recognition is busy; retry shortly')
     try:
-        return await run_in_threadpool(service.recognize, data)
+        return await run_in_threadpool(service.recognize, data, mode, include_candidates)
     except Exception:
         import logging
         logging.exception('Recognition service failed')
@@ -154,12 +154,20 @@ async def recognize_upload(image: UploadFile) -> Dict[str, Any]:
 
 @app.post("/v1/recognize", response_model=RecognizeResponse)
 async def recognize(request: Request, response: Response, image: UploadFile = File(...)) -> Dict[str, Any]:
-    """One best card; technical metrics require an administrator token."""
+    """One best card; technical metrics and non-public benchmark modes require an administrator token."""
     token = request.headers.get('X-Scanner-Admin', '')
     expected = os.getenv('SCANNER_ADMIN_TOKEN', '')
     if token and (not expected or not secrets.compare_digest(token.encode(), expected.encode())):
         raise HTTPException(403, 'Invalid administrator token')
-    result = await recognize_upload(image)
+    mode = request.headers.get('X-Scanner-Mode', 'combined')
+    if mode not in Recognizer.MODES:
+        raise HTTPException(422, 'Unsupported recognition mode')
+    if mode != 'combined' and (not expected or not token):
+        raise HTTPException(403, 'Administrator token required for benchmark modes')
+    include_candidates = request.headers.get('X-Scanner-Benchmark') == '1'
+    if include_candidates and (not expected or not token):
+        raise HTTPException(403, 'Administrator token required for benchmark metrics')
+    result = await recognize_upload(image, mode, include_candidates)
     response.headers['Cache-Control'] = 'no-store'
     if not token:
         result = {**result, 'confidence': None, 'recognition': {

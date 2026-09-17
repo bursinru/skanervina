@@ -26,6 +26,20 @@ class VisualDecisionTests(unittest.TestCase):
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .80}]
         self.assertEqual(self.recognizer.recognize(self.photo)['slug'], 'a')
 
+    def test_image_only_mode_does_not_run_ocr(self):
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .80}]
+        result = self.recognizer.recognize(self.photo, mode='image_auto')
+        self.assertEqual(result['slug'], 'a')
+        self.recognizer._ocr.assert_not_called()
+        self.assertIn('label_detection', result['recognition'])
+
+    def test_ocr_only_mode_does_not_run_visual_search(self):
+        self.recognizer._ocr.return_value = ('Alpha Winery', 'ok')
+        result = self.recognizer.recognize(self.photo, mode='ocr_auto')
+        self.assertEqual(result['recognition']['method'], 'ocr+catalog')
+        self.recognizer.visual.search.assert_not_called()
+        self.assertGreaterEqual(result['recognition']['timings_ms']['ocr'], 0)
+
     def test_lookalikes_are_uncertain(self):
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .94}]
         result = self.recognizer.recognize(self.photo)
