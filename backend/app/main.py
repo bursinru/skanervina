@@ -112,6 +112,11 @@ def readyz(response: Response):
     return state
 
 
+def is_debug_request(request: Request) -> bool:
+    """Allow unredacted telemetry only for an explicit debug request."""
+    return request.headers.get('X-Scanner-Debug') == '1'
+
+
 def require_service() -> Recognizer:
     if not recognizer or not recognizer.catalog.size:
         raise HTTPException(
@@ -154,22 +159,23 @@ async def recognize_upload(image: UploadFile, mode: str = "combined", include_ca
 
 @app.post("/v1/recognize", response_model=RecognizeResponse)
 async def recognize(request: Request, response: Response, image: UploadFile = File(...)) -> Dict[str, Any]:
-    """One best card; technical metrics and non-public benchmark modes require an administrator token."""
+    """One best card; explicit debug requests may expose telemetry without a token."""
     token = request.headers.get('X-Scanner-Admin', '')
     expected = os.getenv('SCANNER_ADMIN_TOKEN', '')
+    debug_request = is_debug_request(request)
     if token and (not expected or not secrets.compare_digest(token.encode(), expected.encode())):
         raise HTTPException(403, 'Invalid administrator token')
     mode = request.headers.get('X-Scanner-Mode', 'combined')
     if mode not in Recognizer.MODES:
         raise HTTPException(422, 'Unsupported recognition mode')
-    if mode != 'combined' and (not expected or not token):
+    if mode != 'combined' and (not expected or not token) and not debug_request:
         raise HTTPException(403, 'Administrator token required for benchmark modes')
     include_candidates = request.headers.get('X-Scanner-Benchmark') == '1'
-    if include_candidates and (not expected or not token):
+    if include_candidates and (not expected or not token) and not debug_request:
         raise HTTPException(403, 'Administrator token required for benchmark metrics')
     result = await recognize_upload(image, mode, include_candidates)
     response.headers['Cache-Control'] = 'no-store'
-    if not token:
+    if not token and not debug_request:
         result = {**result, 'confidence': None, 'recognition': {
             key: value for key, value in result.get('recognition', {}).items() if key in ('method', 'reason')
         }}

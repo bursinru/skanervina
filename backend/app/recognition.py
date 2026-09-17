@@ -110,22 +110,35 @@ class Recognizer:
                 "confidence": 0.0,
                 "recognition": {"method": "input_validation", "reason": "unsupported_mode"},
             }
+        decode_started = perf_counter()
         try:
             image, validation_error = self._decode_image(image_bytes)
             if validation_error:
-                return {'status': 'unknown', 'recognition': {'method': 'input_validation', 'reason': validation_error}}
+                return {
+                    'status': 'unknown',
+                    'recognition': {
+                        'method': 'input_validation',
+                        'reason': validation_error,
+                        'timings_ms': {'decode': round((perf_counter() - decode_started) * 1000, 1)},
+                    },
+                }
         except Exception:
             return {
                 "status": "unknown",
                 "confidence": 0.0,
                 "recognition": {"method": "input_validation", "reason": "invalid_image"},
             }
+        decode_ms = (perf_counter() - decode_started) * 1000
 
         detection_started = perf_counter()
         detection = detect_label(image)
         detection_ms = (perf_counter() - detection_started) * 1000
+        crop_started = perf_counter()
         label = crop_label(image, detection)
+        crop_ms = (perf_counter() - crop_started) * 1000
+        enhancement_started = perf_counter()
         enhanced = enhance_label(label)
+        enhancement_ms = (perf_counter() - enhancement_started) * 1000
         kind = self._mode_kind(mode)
         if mode in {"image_full", "ocr_full"}:
             work_image = image
@@ -142,7 +155,12 @@ class Recognizer:
                     "confidence": detection.confidence,
                     "method": detection.method,
                 },
-                "timings_ms": {"label_detection": round(detection_ms, 1)},
+                "timings_ms": {
+                    "decode": round(decode_ms, 1),
+                    "label_detection": round(detection_ms, 1),
+                    "label_crop": round(crop_ms, 1),
+                    "enhancement": round(enhancement_ms, 1),
+                },
             }
 
         if kind == "ocr":

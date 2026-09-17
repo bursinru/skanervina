@@ -143,6 +143,7 @@ const example = {
   aromas: ['Белые цветы', 'Персик', 'Грейпфрут', 'Миндаль'], demo: true
 };
 let stream = null, cameraGeneration = 0, photo = null, photoUrl = null, controller = null, currentWine = null, toastTimer;
+let processingStartedAt = 0, processingTimer = null;
 let saved = [];
 try { const raw = JSON.parse(localStorage.getItem('svoe-wines') || '[]'); if (Array.isArray(raw)) saved = raw.filter(w => w && typeof w.slug === 'string' && typeof w.name === 'string').slice(0,100); } catch {}
 let ratings = {};
@@ -315,21 +316,95 @@ function formatRating(value) {
   return `${rating.toFixed(1).replace(/\.0$/, '')} / 5`;
 }
 const ratingGlass = () => '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="rating-glass-body" d="M7 3h10l1 7a6 6 0 0 1-12 0z"/><path d="M7 3h10l1 7a6 6 0 0 1-12 0zM12 16v5M8 21h8"/></svg>';
-const adminMode = new URLSearchParams(location.search).get('admin') === '1';
-$('admin-tools').hidden = !adminMode;
+const queryParams = new URLSearchParams(location.search);
+const debugMode = queryParams.get('admin') === '1' || queryParams.get('debug') === '1';
+$('admin-tools').hidden = !debugMode;
+$('processing-debug').hidden = !debugMode;
+function formatElapsed(milliseconds) {
+  const value = Number(milliseconds);
+  return Number.isFinite(value) && value >= 0 ? `${(value / 1000).toFixed(1).replace('.', ',')} с` : '—';
+}
+function addProcessingLog(message) {
+  if (!debugMode) return;
+  const log = $('processing-log');
+  if (!log) return;
+  const item = document.createElement('li');
+  item.textContent = `${formatElapsed(performance.now() - processingStartedAt)} · ${message}`;
+  log.append(item);
+  log.scrollTop = log.scrollHeight;
+}
+function updateProcessingElapsed() {
+  const elapsed = $('processing-elapsed');
+  if (elapsed) elapsed.textContent = `Прошло ${formatElapsed(performance.now() - processingStartedAt)}`;
+}
+function startProcessingLog() {
+  processingStartedAt = performance.now();
+  clearInterval(processingTimer);
+  if (!debugMode) return;
+  $('processing-log').replaceChildren();
+  updateProcessingElapsed();
+  processingTimer = setInterval(updateProcessingElapsed, 100);
+  addProcessingLog('Фото принято');
+  addProcessingLog('Запрос отправлен в распознавание');
+  addProcessingLog('Сервер выполняет автоматический crop, поиск по изображению и OCR');
+}
+function stopProcessingLog() {
+  clearInterval(processingTimer);
+  processingTimer = null;
+  updateProcessingElapsed();
+}
+function renderScanDebug({ result, elapsed }) {
+  if (!debugMode) return '';
+  const metrics = result?.recognition || {};
+  const timings = metrics.timings_ms || {};
+  const similarity = Number.isFinite(metrics.similarity) ? metrics.similarity : Number.isFinite(result?.confidence) ? result.confidence : null;
+  const score = similarity === null ? '—' : `${(similarity * 100).toFixed(1).replace('.', ',')}%`;
+  const serverTotal = Number(timings.total);
+  const timingValues = {
+    decode: Number(timings.decode),
+    labelDetection: Number(timings.label_detection),
+    labelCrop: Number(timings.label_crop),
+    enhancement: Number(timings.enhancement),
+    visual: Number(timings.visual),
+    ocr: Number(timings.ocr),
+  };
+  const timing = value => Number.isFinite(value) && value >= 0 ? formatElapsed(value) : '—';
+  const measured = Object.values(timingValues).filter(value => Number.isFinite(value) && value >= 0);
+  const measuredTotal = measured.reduce((sum, value) => sum + value, 0);
+  const backendOther = Number.isFinite(serverTotal) ? Math.max(0, serverTotal - measuredTotal) : null;
+  const browserOther = Number.isFinite(serverTotal) ? Math.max(0, elapsed - serverTotal) : null;
+  const status = result?.status === 'matched' ? 'Найдено' : result?.status === 'uncertain' ? 'Нужно проверить' : 'Не найдено';
+  const scoreNote = similarity === null ? 'метрика недоступна' : 'сходство, не вероятность';
+  const detailRows = [
+    ['Декодирование фото', timingValues.decode, 'открытие, EXIF и приведение к RGB'],
+    ['Поиск этикетки', timingValues.labelDetection, 'автоматический поиск области для crop'],
+    ['Вырезание crop', timingValues.labelCrop, 'вырезание найденной области'],
+    ['Подготовка изображения', timingValues.enhancement, 'контраст/резкость для enhanced-режима'],
+    ['Изображение', timingValues.visual, 'SigLIP-вектор + поиск ближайших в каталоге'],
+    ['OCR', timingValues.ocr, 'Tesseract и сопоставление распознанного текста'],
+    ['Остальное backend', backendOther, 'сборка ответа и операции, не выделенные отдельно'],
+    ['Загрузка, сеть и браузер', browserOther, 'разница между полным ожиданием и backend'],
+  ];
+  const detailMarkup = detailRows.map(([label, value, note]) => `<div class="scan-debug-detail-row"><div><strong>${label}</strong><small>${note}</small></div><b>${timing(value)}</b></div>`).join('');
+  return `<section class="scan-debug" aria-label="Диагностика сканирования"><div class="scan-debug-heading"><div><small>DEBUG · РЕЗУЛЬТАТ СКАНИРОВАНИЯ</small><h2>Технические показатели</h2></div><span class="scan-debug-status">${escape(status)}</span></div><div class="scan-debug-metrics"><div><small>СОВПАДЕНИЕ</small><strong>${score}</strong><em>${scoreNote}</em></div><div><small>СКОРОСТЬ</small><strong>${formatElapsed(elapsed)}</strong><em>полное ожидание в браузере</em></div><div><small>СЕРВЕР</small><strong>${timing(serverTotal)}</strong><em>распознавание backend</em></div></div><div class="scan-debug-details"><h3>Разбивка времени</h3>${detailMarkup}</div><p class="scan-debug-footnote">В режиме «combined» поиск по изображению — основной результат, а OCR дополнительно проверяет текст этикетки. Время «Загрузка, сеть и браузер» — расчётная разница, а не отдельный замер.</p></section>`;
+}
 function showDiagnostics(result, elapsed) {
-  if (!adminMode || !$('admin-token').value) return;
+  if (!debugMode) return;
   const details = document.createElement('details'); details.className = 'admin-diagnostics'; details.open = true;
-  const summary = document.createElement('summary'); summary.textContent = 'Диагностика администратора'; details.append(summary);
+  const summary = document.createElement('summary'); summary.textContent = 'Диагностика debug'; details.append(summary);
   const metrics = result.recognition || {};
+  const timings = metrics.timings_ms || {};
+  const serverTotal = Number(timings.total);
+  const clientOverhead = Number.isFinite(serverTotal) ? Math.max(0, elapsed - serverTotal) : null;
   const score = metrics.similarity;
   const lines = [
     `Статус: ${result.status}`,
     `Сходство изображений: ${Number.isFinite(score) ? (score * 100).toFixed(1) + '%' : 'не измерено (OCR)'}`,
     'Сходство — косинусная оценка, не вероятность правильного ответа.',
     `Полное ожидание: ${(elapsed / 1000).toFixed(2)} с`,
-    `Обработка на сервере: ${((metrics.timings_ms?.total || 0) / 1000).toFixed(2)} с`,
-    `Визуальный поиск: ${((metrics.timings_ms?.visual || 0) / 1000).toFixed(2)} с · OCR: ${((metrics.timings_ms?.ocr || 0) / 1000).toFixed(2)} с`,
+    `Обработка на сервере: ${formatElapsed(serverTotal)}`,
+    `Разница загрузки/сети/браузера: ${formatElapsed(clientOverhead)}`,
+    `Время этапов: декодирование ${formatElapsed(Number(timings.decode))} · поиск этикетки ${formatElapsed(Number(timings.label_detection))} · crop ${formatElapsed(Number(timings.label_crop))} · подготовка ${formatElapsed(Number(timings.enhancement))} · изображение ${formatElapsed(Number(timings.visual))} · OCR ${formatElapsed(Number(timings.ocr))}`,
     `OCR: ${metrics.ocr || metrics.reason || '—'} · подтверждает результат: ${metrics.ocr_corroborated ? 'да' : 'нет'}`,
     `Оценка текстового поиска: ${Number.isFinite(metrics.ocr_best?.score) ? (metrics.ocr_best.score * 100).toFixed(1) + '%' : '—'}`,
     `Отрыв от следующего: ${Number.isFinite(metrics.margin) ? (metrics.margin * 100).toFixed(2) + ' п.п.' : '—'}`,
@@ -348,28 +423,31 @@ $('recognize').onclick = async () => {
   const timer = setTimeout(() => active.abort('timeout'), 30000);
   const started = performance.now();
   $('scanning-label').src = photoUrl;
+  $('processing-status').textContent = 'Идёт поиск по каталогу…';
+  startProcessingLog();
   $('processing').hidden = false;
   try {
     const body = new FormData(); body.append('image', photo);
-    const headers = adminMode && $('admin-token').value ? { 'X-Scanner-Admin': $('admin-token').value.trim() } : {};
+    const headers = debugMode ? { 'X-Scanner-Debug': '1' } : {};
     const response = await fetch(endpoint, { method:'POST', headers, body, signal:active.signal });
-    if (response.status === 403) { notice('Неверный ключ администратора. Проверьте SCANNER_ADMIN_TOKEN.'); return; }
+    if (response.status === 403) { notice('Сервер отклонил debug-запрос.'); return; }
     if (!response.ok) throw new Error('service');
     const result = await response.json();
+    const elapsed = performance.now() - started;
+    addProcessingLog(`Ответ сервера получен за ${formatElapsed(elapsed)}`);
     if (result.status === 'unknown') {
       notice('Не удалось найти достаточно похожую этикетку. Переснимите бутылку крупнее, без бликов и соседних бутылок.');
-      showDiagnostics(result, performance.now() - started);
+      showDiagnostics(result, elapsed);
       return;
     }
     if (!['matched', 'uncertain'].includes(result.status) || !result.wine?.name || !(result.wine.slug || result.slug)) throw new Error('contract');
-    showWine({ ...result.wine, slug:result.wine.slug || result.slug, image_url:result.wine.image_url || result.wine.imageUrl || result.wine.photo_name, demo:false, uncertain:result.status === 'uncertain' });
-    showDiagnostics(result, performance.now() - started);
+    showWine({ ...result.wine, slug:result.wine.slug || result.slug, image_url:result.wine.image_url || result.wine.imageUrl || result.wine.photo_name, demo:false, uncertain:result.status === 'uncertain' }, { result, elapsed });
   } catch (err) {
     notice(active.signal.aborted ? (active.signal.reason === 'timeout' ? 'Поиск занял слишком много времени. Попробуйте ещё раз.' : 'Поиск отменён. Можно выбрать другое фото.') : 'Сервис распознавания сейчас недоступен или вернул неполную карточку. Попробуйте позже.');
-  } finally { clearTimeout(timer); controller = null; $('processing').hidden = true; }
+  } finally { clearTimeout(timer); controller = null; stopProcessingLog(); $('processing').hidden = true; }
 };
 $('cancel-request').onclick = () => controller?.abort('user');
-function showWine(wine) {
+function showWine(wine, scanMeta = null) {
   stopCamera(); currentWine = wine; $('scanner-screen').hidden = true; $('result-screen').hidden = false;
   const image = resolveImageUrl(wine.image_url, wine.photo_name || wine.image_name || wine.photoName);
   const rating = formatRating(wine.public_rating);
@@ -382,6 +460,7 @@ function showWine(wine) {
   const tasteProfile = deriveTasteProfile(wine);
   const aromaNotes = extractAromaNotes(wine);
   const fitMarkup = fitMarkupFor(wine);
+  const scanDebugMarkup = scanMeta ? renderScanDebug(scanMeta) : '';
   const visualFacts = [
     regionImage ? `<article class="visual-fact"><img src="${escape(regionImage)}" alt="" loading="lazy"><div><small>РЕГИОН</small><strong>${escape(wine.region)}</strong></div></article>` : '',
     ...grapeImages.map(item => `<article class="visual-fact"><img src="${escape(item.image)}" alt="" loading="lazy"><div><small>СОРТ ВИНОГРАДА</small><strong>${escape(item.name)}</strong></div></article>`),
@@ -394,6 +473,7 @@ function showWine(wine) {
   }).join('');
   $('result-screen').innerHTML = `
     <div class="result-top"><button class="text-button" id="back-to-scanner">${icon('arrow-left')} К сканеру</button><span class="demo-badge">${wine.demo ? 'Пример карточки · не результат сканирования' : wine.uncertain ? 'Наиболее похожее · проверьте название' : 'Вино найдено'}</span></div>
+    ${scanDebugMarkup}
     <div class="result-layout"><div class="wine-portrait">${image ? `<img src="${escape(image)}" alt="${escape(wine.name)}"/>` : '<span>Фото пока нет</span>'}<button class="portrait-save icon-action" id="save-wine" type="button" aria-label="Сохранить вино">${icon('bookmark')}</button><span class="portrait-caption">СВОЁ ВИНО · РОССИЙСКИЕ ВИНОДЕЛЬНИ</span></div>
     <div class="wine-details"><p class="eyebrow">${escape(wine.winery)}</p><h1>${escape(wine.name)}</h1><p class="wine-category">${escape(wine.category || '')}${wine.region ? ' · ' + escape(wine.region) : ''}</p>
     ${visualFacts ? `<section class="catalog-visuals" aria-label="Характеристики из каталога"><div class="visual-facts">${visualFacts}</div></section>` : ''}

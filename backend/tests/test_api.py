@@ -62,7 +62,7 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(items)
         self.assertEqual(self.client.get('/v1/catalog/' + items[0]['slug']).status_code, 200)
 
-    def test_admin_metrics_are_protected_and_eval_abstains(self):
+    def test_metrics_are_protected_and_debug_is_open(self):
         result = {'status': 'uncertain', 'slug': 'fanagoria-test', 'wine': {'slug': 'fanagoria-test', 'name': 'Wine', 'winery': 'Test'}, 'confidence': .8, 'recognition': {'similarity': .8, 'timings_ms': {'total': 123}}}
         with patch.dict(os.environ, {'SCANNER_ADMIN_TOKEN': 'test-secret'}), patch('app.main.recognize_upload', return_value=result):
             photo = {'image': ('test.jpg', b'photo', 'image/jpeg')}
@@ -74,4 +74,6 @@ class ApiTests(unittest.TestCase):
             admin = self.client.post('/v1/recognize', files=photo, headers={'X-Scanner-Admin': 'test-secret'})
             self.assertEqual(admin.json()['recognition']['similarity'], .8)
             self.assertEqual(admin.headers['cache-control'], 'no-store')
+            debug = self.client.post('/v1/recognize', files=photo, headers={'X-Scanner-Debug': '1'})
+            self.assertEqual(debug.json()['recognition']['similarity'], .8)
             self.assertIsNone(self.client.post('/v1/eval/predict', files=photo).json()['slug'])
