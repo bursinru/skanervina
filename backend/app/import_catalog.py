@@ -70,11 +70,20 @@ def main():
         existing = {r['slug']: r for r in db.execute('SELECT slug, image_hash, model FROM wine_embeddings')}
     for wine in wines:
         # Strapi stores hashed upload filenames; CSV often contains the original display name.
+        # Optional extra reference: uploads/<slug>.* is preferred over the CDN filename.
         filename = unquote(Path(urlparse(wine.direct_image_url or '').path).name) or wine.image_name
-        path = (root / filename).resolve()
-        if not path.is_relative_to(root) or not path.is_file():
+        files = []
+        primary = (root / filename).resolve()
+        if primary.is_relative_to(root) and primary.is_file():
+            files.append(primary)
+        for extra in sorted(root.glob(f'{wine.slug}.*')):
+            extra = extra.resolve()
+            if extra.is_relative_to(root) and extra.is_file() and extra not in files:
+                files.append(extra)
+        if not files:
             missing.append(wine.slug)
             continue
+        path = files[-1]
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         previous = existing.get(wine.slug, {})
         if previous.get('image_hash') == digest and previous.get('model') == MODEL_ID:
