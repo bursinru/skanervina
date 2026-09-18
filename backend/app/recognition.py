@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional, Tuple
 
 from .catalog import WineCatalog, normalize
 from .label_detection import crop_label, detect_label, enhance_label
+from .ranking import ranking_metrics
+from .recommend import alternatives as recommend_alternatives
 from .settings import Settings
 
 
@@ -136,10 +138,14 @@ class Recognizer:
         crop_started = perf_counter()
         label = crop_label(image, detection)
         crop_ms = (perf_counter() - crop_started) * 1000
-        enhancement_started = perf_counter()
-        enhanced = enhance_label(label)
-        enhancement_ms = (perf_counter() - enhancement_started) * 1000
         kind = self._mode_kind(mode)
+        if mode in {"image_auto_enhanced", "ocr_auto_enhanced"}:
+            enhancement_started = perf_counter()
+            enhanced = enhance_label(label)
+            enhancement_ms = (perf_counter() - enhancement_started) * 1000
+        else:
+            enhanced = label
+            enhancement_ms = 0.0
         if mode in {"image_full", "ocr_full"}:
             work_image = image
         elif mode in {"image_auto_enhanced", "ocr_auto_enhanced"}:
@@ -213,19 +219,20 @@ class Recognizer:
                 threshold=threshold,
                 min_margin=min_margin,
             )
-            if include_candidates:
-                metrics["candidates"] = [
-                    {"slug": candidate["slug"], "score": round(candidate["score"], 4)}
-                    for candidate in candidates[:5]
-                ]
+            ranking = ranking_metrics(candidates)
+            metrics["candidates"] = ranking["top5"]
             metrics["timings_ms"].update(visual=round(visual_ms, 1), ocr=round(ocr_ms, 1))
             result = {
                 'status': 'matched' if matched else ('uncertain' if best['score'] >= 0.65 else 'unknown'),
                 'confidence': round(best['score'], 4),
                 'recognition': metrics,
+                'ranking': ranking,
             }
-            if wine and result['status'] != 'unknown':
-                result.update(slug=wine.slug, wine=wine.to_card())
+            if wine:
+                result['slug'] = wine.slug
+                result['alternatives'] = recommend_alternatives(self.catalog, wine)
+                if result['status'] != 'unknown':
+                    result['wine'] = wine.to_card()
             return result
         if kind == "image" or os.getenv('CV_ENABLED', 'false').lower() == 'true':
             metrics = base_metrics('siglip2')

@@ -15,7 +15,9 @@ from pydantic import BaseModel, Field, StrictInt
 from .limits import BodyLimitMiddleware
 
 from .catalog import WineCatalog
+from .ranking import best_slug
 from .recognition import Recognizer
+from .recommend import alternatives as recommend_alternatives, sommelier_reply
 from .settings import settings
 
 
@@ -47,6 +49,8 @@ class RecognizeResponse(BaseModel):
     slug: Optional[str] = None
     wine: Optional[WineCard] = None
     confidence: Optional[float] = None
+    ranking: Dict[str, Any] = Field(default_factory=dict)
+    alternatives: list[WineCard] = Field(default_factory=list)
     recognition: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -131,18 +135,29 @@ inference_slots = asyncio.Semaphore(2)
 
 
 async def recognize_upload(image: UploadFile, mode: str = "combined", include_candidates: bool = False) -> Dict[str, Any]:
-    allowed_types = {"image/jpeg", "image/png", "image/webp"}
-    if image.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=415,
-            detail="Supported image types: JPG, PNG, WebP.",
-        )
-
+    allowed_types = {"image/jpeg", "image/png", "image/webp", "image/jpg"}
+    declared = (image.content_type or "").split(";")[0].strip().lower()
     data = await image.read(settings.max_image_bytes + 1)
     if len(data) > settings.max_image_bytes:
         raise HTTPException(status_code=413, detail="Image is larger than 15 MB.")
     if not data:
         raise HTTPException(status_code=400, detail="Image is empty.")
+    sniffed = None
+    if data[:3] == b"\xff\xd8\xff":
+        sniffed = "image/jpeg"
+    elif data.startswith(b"\x89PNG\r\n\x1a\n"):
+        sniffed = "image/png"
+    elif len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        sniffed = "image/webp"
+    if declared not in allowed_types and not (
+        sniffed and declared in {"", "application/octet-stream", "application/x-www-form-urlencoded"}
+    ):
+        raise HTTPException(
+            status_code=415,
+            detail="Supported image types: JPG, PNG, WebP.",
+        )
+    if not sniffed and declared not in allowed_types:
+        raise HTTPException(status_code=415, detail="Supported image types: JPG, PNG, WebP.")
     service = require_service()
     try:
         await asyncio.wait_for(inference_slots.acquire(), timeout=0.1)
@@ -185,9 +200,9 @@ async def recognize(request: Request, response: Response, image: UploadFile = Fi
 
 @app.post("/v1/eval/predict")
 async def eval_predict(image: UploadFile = File(...)) -> Dict[str, Optional[str]]:
-    """Compatibility endpoint for the supplied evaluation harness."""
-    result = await recognize_upload(image)
-    return {"slug": result.get("slug") if result.get("status") == "matched" else None}
+    """Top-1 slug for the organizer script, including uncertain visual matches."""
+    result = await recognize_upload(image, include_candidates=True)
+    return {"slug": best_slug(result)}
 
 
 @app.get("/v1/catalog/{slug}", response_model=WineCard)
@@ -231,6 +246,30 @@ def put_profile(state: ProfileState, request: Request, response: Response):
         raise HTTPException(413, "Profile too large")
     storage.save(token, payload)
     return payload
+
+
+@app.get("/v1/catalog/{slug}/alternatives")
+def catalog_alternatives(slug: str) -> Dict[str, Any]:
+    service = require_service()
+    wine = service.catalog.get(slug)
+    if not wine:
+        raise HTTPException(status_code=404, detail="Wine not found.")
+    return {"items": recommend_alternatives(service.catalog, wine)}
+
+
+class SommelierRequest(BaseModel):
+    occasion: str = Field(min_length=2, max_length=40)
+    slug: Optional[str] = Field(default=None, max_length=300)
+
+
+@app.post("/v1/sommelier")
+def sommelier(body: SommelierRequest) -> Dict[str, Any]:
+    service = require_service()
+    current = service.catalog.get(body.slug) if body.slug else None
+    result = sommelier_reply(service.catalog, body.occasion, current)
+    if result.get("error"):
+        raise HTTPException(422, "Unknown occasion")
+    return result
 
 
 @app.get("/v1/search")

@@ -484,6 +484,21 @@ function showWine(wine, scanMeta = null) {
     <div class="wine-facts"><span><small>СОРТ ВИНОГРАДА</small>${escape(grapes.join(', ') || 'Не указан')}</span><span><small>РЕГИОН</small>${escape(wine.region || 'Не указан')}</span>${wine.temperature ? `<span><small>ПОДАВАТЬ</small>${escape(wine.temperature)}</span>` : ''}${wine.alcohol ? `<span><small>КРЕПОСТЬ</small>${escape(wine.alcohol)}</span>` : ''}</div>
     <div class="result-actions"><button class="button primary" id="compare-wine" type="button">${icon('compare')} Сравнить</button><button class="button secondary" id="scan-again">${icon('camera')} Сканировать следующее</button></div></div></div>
     ${dishes.length ? `<section class="dish-pairings"><div class="dish-pairings-heading"><div>${icon('utensils')}<h2>Сочетание с блюдами</h2></div><span>Из каталога «Своё Вино»</span></div><div class="dish-grid">${dishCards}</div></section>` : ''}
+    <section class="after-search" id="after-search">
+      <div class="dish-pairings-heading"><div>${icon('compare')}<h2>Российские аналоги</h2></div><span>Другие винодельни, похожий стиль</span></div>
+      <p class="muted" id="alternatives-status">Подбираем вина из каталога…</p>
+      <div class="alt-grid" id="alternatives-grid"></div>
+      <div class="dish-pairings-heading sommelier-heading"><div>${icon('utensils')}<h2>Цифровой сомелье</h2></div><span>К чему подбираете вино?</span></div>
+      <div class="food-buttons" id="sommelier-occasions">
+        <button type="button" data-occasion="fish">Рыба</button>
+        <button type="button" data-occasion="meat">Мясо</button>
+        <button type="button" data-occasion="cheese">Сыр</button>
+        <button type="button" data-occasion="dessert">Десерт</button>
+        <button type="button" data-occasion="aperitif">Просто выпить</button>
+      </div>
+      <p class="pairing-explanation" id="sommelier-hint">Выберите ситуацию — предложим российские вина из каталога.</p>
+      <div class="alt-grid" id="sommelier-grid"></div>
+    </section>
     ${wine.demo ? `<section class="pairings"><div class="pairings-heading">${icon('utensils')}<h2>Что у вас на ужин?</h2></div><p class="muted">Выберите блюдо — подскажем, как оно сочетается с этим стилем вина.</p><div class="food-buttons"><button data-food="fish" aria-pressed="true">Рыба и морепродукты</button><button data-food="cheese" aria-pressed="false">Мягкий сыр</button><button data-food="salad" aria-pressed="false">Лёгкий салат</button><button data-food="steak" aria-pressed="false">Стейк</button><button data-food="dessert" aria-pressed="false">Десерт</button></div><p class="pairing-explanation" id="pairing-explanation"></p></section>` : ''}
     <details class="description" open><summary><span>О вине</span><span class="description-toggle"><span class="description-hide">Свернуть</span><span class="description-show">Читать</span></span></summary><p>${escape(wine.description || 'Описание пока не добавлено.')}</p></details>`;
   $('back-to-scanner').onclick = $('scan-again').onclick = backToScanner;
@@ -520,8 +535,72 @@ function showWine(wine, scanMeta = null) {
     document.querySelectorAll('[data-food]').forEach(btn => btn.onclick = () => { document.querySelectorAll('[data-food]').forEach(b => b.setAttribute('aria-pressed', b === btn)); $('pairing-explanation').textContent = explanations[btn.dataset.food]; });
   }
   $('result-screen').focus({ preventScroll:true }); window.scrollTo({ top:0, behavior:'instant' });
+  bindAfterSearch(wine, scanMeta);
 }
 function backToScanner() { $('result-screen').hidden = true; $('scanner-screen').hidden = false; $('show-example')?.focus({ preventScroll:true }); window.scrollTo({ top:0, behavior:'instant' }); }
+function wineMiniCard(item) {
+  const image = resolveImageUrl(item.image_url, item.photo_name || item.image_name);
+  return `<article class="alt-card" data-open-slug="${escape(item.slug)}">${image ? `<img src="${escape(image)}" alt="" loading="lazy">` : '<span class="dish-placeholder">Нет фото</span>'}<div><small>${escape(item.winery || '')}</small><strong>${escape(item.name || '')}</strong><em>${escape([item.category, item.region].filter(Boolean).join(' · '))}</em></div></article>`;
+}
+function bindMiniCards(root, fallback) {
+  root?.querySelectorAll('[data-open-slug]').forEach(card => {
+    card.onclick = async () => {
+      const slug = card.getAttribute('data-open-slug');
+      try {
+        const response = await fetch(`/v1/catalog/${encodeURIComponent(slug)}`);
+        if (!response.ok) throw new Error('catalog');
+        const wine = await response.json();
+        showWine({ ...wine, demo: false });
+      } catch {
+        if (fallback) showWine(fallback);
+      }
+    };
+  });
+}
+function bindAfterSearch(wine, scanMeta) {
+  const ranking = scanMeta?.result?.ranking;
+  const ready = Array.isArray(scanMeta?.result?.alternatives) ? scanMeta.result.alternatives : [];
+  const renderAlts = items => {
+    const status = $('alternatives-status');
+    const grid = $('alternatives-grid');
+    if (!status || !grid) return;
+    if (!items.length) {
+      status.textContent = 'Похожих вин других виноделен в каталоге пока нет.';
+      grid.innerHTML = '';
+      return;
+    }
+    status.textContent = 'Если это не то вино, посмотрите близкий стиль у других производителей.';
+    grid.innerHTML = items.map(wineMiniCard).join('');
+    bindMiniCards(grid);
+  };
+  if (ready.length) renderAlts(ready);
+  else if (wine.slug) {
+    fetch(`/v1/catalog/${encodeURIComponent(wine.slug)}/alternatives`).then(r => r.ok ? r.json() : { items: [] }).then(data => renderAlts(data.items || [])).catch(() => renderAlts([]));
+  } else renderAlts([]);
+  document.querySelectorAll('#sommelier-occasions [data-occasion]').forEach(button => {
+    button.onclick = async () => {
+      document.querySelectorAll('#sommelier-occasions [data-occasion]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+      $('sommelier-hint').textContent = 'Подбираем…';
+      try {
+        const response = await fetch('/v1/sommelier', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ occasion: button.dataset.occasion, slug: wine.slug || null }),
+        });
+        if (!response.ok) throw new Error('sommelier');
+        const data = await response.json();
+        $('sommelier-hint').textContent = data.hint || '';
+        $('sommelier-grid').innerHTML = (data.wines || []).map(wineMiniCard).join('');
+        bindMiniCards($('sommelier-grid'));
+      } catch {
+        $('sommelier-hint').textContent = 'Сомелье сейчас недоступен. Можно выбрать блюдо из карточки выше.';
+      }
+    };
+  });
+  if (debugMode && ranking) {
+    addProcessingLog(`F1 top-1 ${ranking.f1_top1} · F1 top-5 ${ranking.f1_top5} · отрыв ${ranking.margin}`);
+  }
+}
 function persist() { try { localStorage.setItem('svoe-wines', JSON.stringify(saved)); syncSavedCount(); syncProfile(); return true; } catch { toast('Не удалось сохранить: хранилище браузера недоступно.'); return false; } }
 function saveWine() {
   if (!currentWine) return;

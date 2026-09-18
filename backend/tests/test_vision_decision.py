@@ -61,7 +61,7 @@ class VisualDecisionTests(unittest.TestCase):
         result = self.recognizer.recognize(self.photo)
         self.assertEqual(result['status'], 'uncertain')
         self.assertEqual(result['slug'], 'a')
-        self.assertNotIn('candidates', result['recognition'])
+        self.assertEqual(result['ranking']['top5'][0]['slug'], 'a')
         self.assertGreaterEqual(result['recognition']['timings_ms']['total'], 0)
 
     def test_unrelated_image_has_no_card(self):
@@ -69,6 +69,8 @@ class VisualDecisionTests(unittest.TestCase):
         result = self.recognizer.recognize(self.photo)
         self.assertEqual(result['status'], 'unknown')
         self.assertNotIn('wine', result)
+        self.assertEqual(result.get('slug'), 'a')
+        self.assertGreater(result['ranking']['f1_top1'], -0.01)
 
     def test_empty_index_does_not_fall_back_to_ocr(self):
         self.recognizer.visual.search.return_value = []

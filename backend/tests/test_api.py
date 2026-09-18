@@ -76,4 +76,4 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(admin.headers['cache-control'], 'no-store')
             debug = self.client.post('/v1/recognize', files=photo, headers={'X-Scanner-Debug': '1'})
             self.assertEqual(debug.json()['recognition']['similarity'], .8)
-            self.assertIsNone(self.client.post('/v1/eval/predict', files=photo).json()['slug'])
+            self.assertEqual(self.client.post('/v1/eval/predict', files=photo).json()['slug'], 'fanagoria-test')

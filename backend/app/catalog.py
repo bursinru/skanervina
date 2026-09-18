@@ -212,6 +212,9 @@ class WineCatalog:
             )
         return cls(wines)
 
+    def __iter__(self):
+        return iter(self._wines.values())
+
     @property
     def size(self) -> int:
         return len(self._wines)
