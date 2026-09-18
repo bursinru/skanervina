@@ -44,6 +44,7 @@ BASE_URL = "https://otzovik.com"
 CATEGORY_URL = f"{BASE_URL}/food/alcohol/wines/"
 USER_AGENT = "otzovik-wine-review-photo-dataset/0.1 (+public-research; respectful-rate-limit)"
 IMAGE_HOST = "i.otzovik.com"
+IMAGE_HOST_RE = re.compile(r"^(?:i|i\d+)\.otzovik\.com$", re.IGNORECASE)
 REVIEW_URL_RE = re.compile(r"^/review_(\d+)\.html/?$")
 PRODUCT_URL_RE = re.compile(r"^/reviews/([^/]+)/?$")
 PRODUCT_PAGINATION_URL_RE = re.compile(r"^/reviews/([^/]+)/([0-9]+)/?$")
@@ -63,7 +64,9 @@ def clean_text(value: object) -> str:
 
 def normalize_url(url: str) -> str:
     parsed = urlparse(urljoin(BASE_URL, url))
-    if parsed.scheme not in {"http", "https"} or parsed.netloc.lower() not in {"otzovik.com", "www.otzovik.com", IMAGE_HOST}:
+    host = parsed.netloc.lower()
+    allowed = host in {"otzovik.com", "www.otzovik.com"} or bool(IMAGE_HOST_RE.match(host))
+    if parsed.scheme not in {"http", "https"} or not allowed:
         return ""
     scheme = "https"
     host = parsed.netloc.lower()
@@ -193,7 +196,7 @@ def image_url_candidate(value: str) -> str:
     parsed = urlparse(urljoin(BASE_URL, value))
     host = parsed.netloc.lower()
     path = parsed.path.lower()
-    if host != IMAGE_HOST or not path.startswith("/objects/"):
+    if not IMAGE_HOST_RE.match(host) or not path.startswith("/objects/"):
         return ""
     if "/avatar/" in path:
         return ""
@@ -485,9 +488,10 @@ def check_robots(fetcher: Fetcher, ignore_robots: bool) -> None:
         parser = RobotFileParser()
         parser.set_url(f"{BASE_URL}/robots.txt")
         parser.parse(content.decode("utf-8", errors="replace").splitlines())
-        for path in ("/food/alcohol/wines/", "/reviews/example/", "/reviews/example/gallery/", "/review_1.html"):
+        for path in ("/food/alcohol/wines/", "/reviews/example/", "/review_1.html"):
             if not parser.can_fetch(USER_AGENT, urljoin(BASE_URL, path)):
                 raise RuntimeError(f"robots.txt disallows this path: {path}")
+        # Gallery tabs are Disallow: /*/gallery/$ — skip them instead of aborting.
     except RuntimeError:
         raise
     except Exception as error:
@@ -619,30 +623,7 @@ def main() -> int:
                 if args.max_images and image_counter >= args.max_images:
                     break
 
-            if not args.max_images or image_counter < args.max_images:
-                gallery_pages = [gallery_url_for(product.product_url)]
-                gallery_seen: Set[str] = set()
-                gallery_index = 0
-                try:
-                    while gallery_pages:
-                        gallery_page_url = gallery_pages.pop(0)
-                        if gallery_page_url in gallery_seen:
-                            continue
-                        gallery_seen.add(gallery_page_url)
-                        gallery_html = fetcher.html(gallery_page_url, referer=product.product_url)
-                        for item in extract_gallery_images(gallery_html, gallery_page_url):
-                            linked_review = next((item_review for item_review in reviews if item_review.review_url == item["review_url"]), None)
-                            add_image(item["source_image_url"], linked_review, item["review_url"] or gallery_page_url, gallery_index)
-                            gallery_index += 1
-                            if args.max_images and image_counter >= args.max_images:
-                                break
-                        if args.max_images and image_counter >= args.max_images:
-                            break
-                        for next_url in extract_gallery_page_links(gallery_html, gallery_page_url):
-                            if next_url not in gallery_seen and next_url not in gallery_pages:
-                                gallery_pages.append(next_url)
-                except Exception as gallery_error:
-                    print(f"warning: gallery skipped for {product.product_slug}: {gallery_error}", file=sys.stderr)
+            # robots.txt Disallow: /*/gallery/$ — photos come from review pages only.
 
             product.review_count_scraped = len(review_urls)
             product.image_count = sum(item["product_slug"] == product.product_slug for item in image_rows)

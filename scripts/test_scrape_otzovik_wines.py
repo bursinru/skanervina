@@ -39,6 +39,7 @@ def main() -> None:
       <div class='review-photos'>
         <a href='https://i.otzovik.com/objects/a/1/abc.webp'><img src='https://i.otzovik.com/objects/a/1/abc_s.webp'></a>
       </div>
+      <img src='https://i2024.otzovik.com/objects/a/1/year.webp'>
       <img src='https://i2024.otzovik.com/2024/07/avatar/1.webp'>
       <img src='/assets/logo.svg'>
     </main>
@@ -46,7 +47,10 @@ def main() -> None:
     """
     soup = BeautifulSoup(review, "html.parser")
     assert extract_review_links(review, CATEGORY_URL) == ["https://otzovik.com/review_123.html"]
-    assert extract_review_images(soup) == ["https://i.otzovik.com/objects/a/1/abc.webp"]
+    assert extract_review_images(soup) == [
+        "https://i.otzovik.com/objects/a/1/abc.webp",
+        "https://i2024.otzovik.com/objects/a/1/year.webp",
+    ]
 
     gallery = """
     <a href='/review_123.html'><img src='https://i.otzovik.com/objects/a/1/abc_s.webp'></a>

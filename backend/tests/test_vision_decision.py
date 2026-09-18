@@ -22,7 +22,11 @@ class VisualDecisionTests(unittest.TestCase):
         Image.new('RGB', (50, 50), 'white').save(output, format='PNG')
         self.photo = output.getvalue()
 
-    def test_separated_visual_match(self):
+    def test_match_from_eighty_percent(self):
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .81}, {'slug': 'b', 'score': .70}]
+        result = self.recognizer.recognize(self.photo)
+        self.assertEqual(result['status'], 'matched')
+        self.assertEqual(result['wine']['slug'], 'a')
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .80}]
         self.assertEqual(self.recognizer.recognize(self.photo)['slug'], 'a')
 
@@ -61,8 +65,19 @@ class VisualDecisionTests(unittest.TestCase):
         result = self.recognizer.recognize(self.photo)
         self.assertEqual(result['status'], 'uncertain')
         self.assertEqual(result['slug'], 'a')
+        self.assertNotIn('wine', result)
+        self.assertEqual([card['slug'] for card in result['lookalikes']], ['a', 'b'])
+        self.assertEqual(result['lookalikes'][0]['label_score'], 0.95)
+        self.assertEqual(result['lookalikes'][1]['label_score'], 0.94)
         self.assertEqual(result['ranking']['top5'][0]['slug'], 'a')
         self.assertGreaterEqual(result['recognition']['timings_ms']['total'], 0)
+
+    def test_unknown_still_returns_visual_neighbors(self):
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .4}, {'slug': 'b', 'score': .38}]
+        result = self.recognizer.recognize(self.photo)
+        self.assertEqual(result['status'], 'unknown')
+        self.assertNotIn('wine', result)
+        self.assertEqual([card['slug'] for card in result['lookalikes']], ['a', 'b'])
 
     def test_unrelated_image_has_no_card(self):
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .4}]

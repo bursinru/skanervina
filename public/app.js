@@ -13,11 +13,12 @@ const paths = {
   'arrow-left': '<path d="M20 12H4m6-6-6 6 6 6"/>',
   'arrow-up-right': '<path d="M6 18 18 6M6 6h12v12"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 5 5"/>',
-  compare: '<rect x="3" y="5" width="7" height="14" rx="1"/><rect x="14" y="5" width="7" height="14" rx="1"/>',
   x: '<path d="m6 6 12 12M6 18 18 6"/>',
   check: '<path d="m5 12 4 4L19 6"/>'
 };
-const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.wine}</svg>`;
+const icon = (name) => name === 'compare'
+  ? '<span class="icon-compare" aria-hidden="true"></span>'
+  : `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.wine}</svg>`;
 document.querySelectorAll('[data-icon]').forEach(el => el.innerHTML = icon(el.dataset.icon));
 const escape = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const catalogAssets = {
@@ -30,11 +31,36 @@ const catalogAssets = {
     'первенец магарача': '/assets/catalog/grape-pervenets-magaracha.webp'
   },
   dish: {
+    'азиатская кухня': '/assets/catalog/dish-asian.webp',
+    'блюда из рыбы': '/assets/catalog/dish-fish.webp',
+    'рыба и морепродукты': '/assets/catalog/dish-fish.webp',
+    'морепродукты': '/assets/catalog/dish-fish.webp',
+    'устрицы': '/assets/catalog/dish-oysters.webp',
+    'фруктово-ягодные десерты': '/assets/catalog/dish-fruit-dessert.webp',
+    'выпечка и десерты': '/assets/catalog/dish-pastry.webp',
+    'десерты': '/assets/catalog/dish-dessert.webp',
+    'мороженое': '/assets/catalog/dish-pastry.webp',
+    'шоколад': '/assets/catalog/dish-dessert.webp',
+    'пицца': '/assets/catalog/dish-pizza.webp',
+    'паста': '/assets/catalog/dish-pasta.webp',
+    'салаты': '/assets/catalog/dish-salad.webp',
+    'брускетты': '/assets/catalog/dish-bruschetta.webp',
+    'паштеты': '/assets/catalog/dish-pate.webp',
+    'кухни народов мира': '/assets/catalog/dish-world-cuisine.webp',
     'блюда из птицы': '/assets/catalog/dish-poultry.webp',
     'птица': '/assets/catalog/dish-poultry.webp',
+    'запеченные овощи': '/assets/catalog/dish-grilled-vegetables.webp',
     'овощи гриль': '/assets/catalog/dish-grilled-vegetables.webp',
     'овощи на гриле': '/assets/catalog/dish-grilled-vegetables.webp',
-    'легкие закуски': '/assets/catalog/dish-light-snacks.webp'
+    'легкие закуски': '/assets/catalog/dish-light-snacks.webp',
+    'закуски': '/assets/catalog/dish-snacks.webp',
+    'сыры': '/assets/catalog/dish-cheese.webp',
+    'сыр': '/assets/catalog/dish-cheese.webp',
+    'мясо и стейки': '/assets/catalog/dish-steak.webp',
+    'мясное ассорти': '/assets/catalog/dish-meat-platter.webp',
+    'кавказская кухня': '/assets/catalog/dish-meat-platter.webp',
+    'bbq': '/assets/catalog/dish-meat-platter.webp',
+    'барбекю': '/assets/catalog/dish-meat-platter.webp'
   }
 };
 const normalizeCatalogValue = value => String(value ?? '').trim().toLocaleLowerCase('ru-RU').replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -42,7 +68,8 @@ function catalogAsset(type, value) {
   const normalized = normalizeCatalogValue(value);
   if (!normalized) return '';
   const assets = catalogAssets[type] || {};
-  const key = Object.keys(assets).find(candidate => normalized === candidate || normalized.includes(candidate) || candidate.includes(normalized));
+  if (assets[normalized]) return safeImage(assets[normalized]);
+  const key = Object.keys(assets).find(candidate => normalized.includes(candidate) || candidate.includes(normalized));
   return key ? safeImage(assets[key]) : '';
 }
 function inferWineColor(wine) {
@@ -113,27 +140,50 @@ function deriveTasteProfile(wine) {
   const calculated = { sweetness, acidity, aromaticity, body };
   return Object.fromEntries(tasteDimensions.map(({ key }) => [key, clampTaste(Number(supplied?.[key]) || calculated[key])]));
 }
-function getPreferenceProfile() {
+function collectRatedWines() {
   const profileWines = [...saved];
   if (currentWine && !profileWines.some(wine => wine.slug === currentWine.slug)) profileWines.push(currentWine);
-  const rated = profileWines.map(wine => ({ wine, rating: Number(ratings[wine.slug]) })).filter(item => Number.isInteger(item.rating) && item.rating >= 1 && item.rating <= 5);
-  if (!rated.length) return null;
-  const weight = rated.reduce((sum, item) => sum + item.rating, 0);
-  const values = Object.fromEntries(tasteDimensions.map(({ key }) => [key, rated.reduce((sum, item) => sum + deriveTasteProfile(item.wine)[key] * item.rating, 0) / weight]));
-  return { values, count: rated.length };
+  return profileWines
+    .map(wine => ({ wine, rating: Number(ratings[wine.slug]) }))
+    .filter(item => Number.isInteger(item.rating) && item.rating >= 1 && item.rating <= 5);
+}
+function averageTaste(items, weightOf) {
+  const weight = items.reduce((sum, item) => sum + weightOf(item.rating), 0);
+  if (!weight) return null;
+  return Object.fromEntries(tasteDimensions.map(({ key }) => [
+    key,
+    items.reduce((sum, item) => sum + deriveTasteProfile(item.wine)[key] * weightOf(item.rating), 0) / weight
+  ]));
+}
+function tasteDistance(profile, values) {
+  if (!values) return 1;
+  return tasteDimensions.reduce((sum, { key }) => sum + Math.abs(profile[key] - values[key]) / 4, 0) / tasteDimensions.length;
+}
+function getPreferenceProfile() {
+  const rated = collectRatedWines();
+  const likes = rated.filter(item => item.rating >= 4);
+  if (!likes.length) return null;
+  const dislikes = rated.filter(item => item.rating <= 2);
+  return {
+    likes: averageTaste(likes, rating => rating),
+    dislikes: averageTaste(dislikes, rating => 6 - rating),
+    likeCount: likes.length,
+    dislikeCount: dislikes.length,
+    count: likes.length
+  };
 }
 function calculateFit(wine, preference = getPreferenceProfile()) {
-  if (!preference) return null;
+  if (!preference?.likes) return null;
   const profile = deriveTasteProfile(wine);
-  const difference = tasteDimensions.reduce((sum, { key }) => sum + Math.abs(profile[key] - preference.values[key]) / 4, 0) / tasteDimensions.length;
-  const base = 100 - difference * 100;
-  return Math.max(0, Math.min(100, Math.round(base)));
+  let score = 100 - tasteDistance(profile, preference.likes) * 100;
+  if (preference.dislikes) score -= (1 - tasteDistance(profile, preference.dislikes)) * 35;
+  return Math.max(0, Math.min(100, Math.round(score)));
 }
 function fitMarkupFor(wine) {
   const preference = getPreferenceProfile();
   const fit = calculateFit(wine, preference);
   if (fit === null) return '';
-  return `<section class="fit-card"><strong>${fit}%</strong><div><small>ПОДХОДИТ ВАМ</small><b>Похоже на то, что вы любите</b><p>На основе ${preference.count} ${preference.count === 1 ? 'вашей оценки' : preference.count < 5 ? 'ваших оценок' : 'оценок в вашем профиле'} и вкусового профиля вина.</p></div></section>`;
+  return `<section class="fit-card"><strong>${fit}%</strong><div><small>ПОДХОДИТ ВАМ</small><b>Похоже на то, что вы любите</b><p>На основе ${preference.count} ${preference.count === 1 ? 'вашей высокой оценки' : preference.count < 5 ? 'ваших высоких оценок' : 'высоких оценок в вашем профиле'} и вкусового профиля вина.</p></div></section>`;
 }
 const example = {
   slug: 'fanagoriya-blanc-de-blancs-shardone-beloe-bryut-12', name: 'Blanc de Blancs', winery: 'Фанагория',
@@ -197,6 +247,8 @@ function syncCompareButton() {
   if (!button || !currentWine) return;
   const compared = isCompared(currentWine);
   button.classList.toggle('is-selected', compared);
+  button.classList.toggle('primary', compared);
+  button.classList.toggle('secondary', !compared);
   button.setAttribute('aria-pressed', String(compared));
   button.innerHTML = icon('compare') + ' Сравнить';
 }
@@ -233,13 +285,11 @@ function toggleCompare(wine) {
   const index = comparison.findIndex(item => item.slug === wine.slug);
   if (index >= 0) {
     comparison.splice(index, 1);
-    toast('Вино убрано из сравнения');
   } else if (comparison.length >= 3) {
     toast('Можно выбрать максимум три вина');
     return;
   } else {
     comparison.push({ ...wine });
-    toast('Вино добавлено в сравнение');
   }
   persistComparison();
   renderCompareTray();
@@ -312,10 +362,24 @@ function resolveImageUrl(imageUrl, fileName) {
 }
 function formatRating(value) {
   const rating = Number(value);
-  if (!Number.isFinite(rating) || rating < 0 || rating > 5) return '';
-  return `${rating.toFixed(1).replace(/\.0$/, '')} / 5`;
+  if (!Number.isFinite(rating) || rating < 0 || rating > 5) return '0.00';
+  return rating.toFixed(2);
 }
-const ratingGlass = () => '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="rating-glass-body" d="M7 3h10l1 7a6 6 0 0 1-12 0z"/><path d="M7 3h10l1 7a6 6 0 0 1-12 0zM12 16v5M8 21h8"/></svg>';
+function formatScorePct(value) {
+  if (value == null || value === '') return '';
+  const score = Number(value);
+  if (!Number.isFinite(score)) return '';
+  const pct = Math.max(0, Math.min(100, score * 100));
+  return `${pct.toFixed(1).replace('.', ',')}%`;
+}
+function withLabelScores(items, result) {
+  const ranked = [...(result?.ranking?.top5 || []), ...(result?.recognition?.candidates || [])];
+  const scores = Object.fromEntries(ranked.filter(item => item?.slug).map(item => [item.slug, item.score]));
+  return (Array.isArray(items) ? items : []).map(item => {
+    const label_score = Number.isFinite(Number(item?.label_score)) ? Number(item.label_score) : scores[item?.slug];
+    return { ...item, label_score };
+  });
+}
 const queryParams = new URLSearchParams(location.search);
 const debugMode = queryParams.get('admin') === '1' || queryParams.get('debug') === '1';
 $('admin-tools').hidden = !debugMode;
@@ -412,7 +476,8 @@ function showDiagnostics(result, elapsed) {
   ];
   const text = document.createElement('pre'); text.textContent = lines.join('\n'); details.append(text);
   document.querySelector('.admin-diagnostics')?.remove();
-  if (result.wine) $('result-screen').querySelector('.result-top').after(details);
+  const resultTop = $('result-screen')?.querySelector('.result-top');
+  if (!$('result-screen')?.hidden && resultTop) resultTop.after(details);
   else $('admin-tools').append(details);
 }
 $('recognize').onclick = async () => {
@@ -435,13 +500,16 @@ $('recognize').onclick = async () => {
     const result = await response.json();
     const elapsed = performance.now() - started;
     addProcessingLog(`Ответ сервера получен за ${formatElapsed(elapsed)}`);
-    if (result.status === 'unknown') {
-      notice('Не удалось найти достаточно похожую этикетку. Переснимите бутылку крупнее, без бликов и соседних бутылок.');
-      showDiagnostics(result, elapsed);
+    if (result.status === 'matched') {
+      if (!result.wine?.name || !(result.wine.slug || result.slug)) throw new Error('contract');
+      showWine({ ...result.wine, slug:result.wine.slug || result.slug, image_url:result.wine.image_url || result.wine.imageUrl || result.wine.photo_name, demo:false }, { result, elapsed });
       return;
     }
-    if (!['matched', 'uncertain'].includes(result.status) || !result.wine?.name || !(result.wine.slug || result.slug)) throw new Error('contract');
-    showWine({ ...result.wine, slug:result.wine.slug || result.slug, image_url:result.wine.image_url || result.wine.imageUrl || result.wine.photo_name, demo:false, uncertain:result.status === 'uncertain' }, { result, elapsed });
+    if (result.status === 'unknown' || result.status === 'uncertain') {
+      showNotFound(result, elapsed);
+      return;
+    }
+    throw new Error('contract');
   } catch (err) {
     notice(active.signal.aborted ? (active.signal.reason === 'timeout' ? 'Поиск занял слишком много времени. Попробуйте ещё раз.' : 'Поиск отменён. Можно выбрать другое фото.') : 'Сервис распознавания сейчас недоступен или вернул неполную карточку. Попробуйте позже.');
   } finally { clearTimeout(timer); controller = null; stopProcessingLog(); $('processing').hidden = true; }
@@ -455,16 +523,13 @@ function showWine(wine, scanMeta = null) {
   const grapes = Array.isArray(wine.grapes) ? wine.grapes.filter(Boolean) : (wine.grapes ? [wine.grapes] : []);
   const wineColor = inferWineColor(wine);
   const regionImage = catalogAsset('region', wine.region) || safeImage(wine.region_image_url);
-  const grapeImageUrls = Array.isArray(wine.grape_image_urls) ? wine.grape_image_urls : [];
-  const grapeImages = grapes.map((grape, index) => ({ name: grape, image: catalogAsset('grape', grape) || safeImage(grapeImageUrls[index] || (index === 0 ? wine.grape_image_url : '')) })).filter(item => item.image);
   const tasteProfile = deriveTasteProfile(wine);
   const aromaNotes = extractAromaNotes(wine);
   const fitMarkup = fitMarkupFor(wine);
   const scanDebugMarkup = scanMeta ? renderScanDebug(scanMeta) : '';
   const visualFacts = [
     regionImage ? `<article class="visual-fact"><img src="${escape(regionImage)}" alt="" loading="lazy"><div><small>РЕГИОН</small><strong>${escape(wine.region)}</strong></div></article>` : '',
-    ...grapeImages.map(item => `<article class="visual-fact"><img src="${escape(item.image)}" alt="" loading="lazy"><div><small>СОРТ ВИНОГРАДА</small><strong>${escape(item.name)}</strong></div></article>`),
-    (wine.category || wineColor) ? `<article class="visual-fact visual-fact-color"><span class="color-dot color-dot-${colorTone(wineColor)}"></span><div><small>КАТЕГОРИЯ И ЦВЕТ</small><strong>${escape(wine.category || 'Категория не указана')}</strong>${wineColor ? `<em>${escape(wineColor)}</em>` : ''}</div></article>` : ''
+    (wine.category || wineColor) ? `<article class="visual-fact visual-fact-color color-tone-${colorTone(wineColor)}"><div><small>КАТЕГОРИЯ</small><strong>${escape(wine.category || 'Категория не указана')}</strong>${wineColor ? `<em>${escape(wineColor)}</em>` : ''}</div></article>` : ''
   ].filter(Boolean).join('');
   const dishImageUrls = Array.isArray(wine.dish_image_urls) ? wine.dish_image_urls : [];
   const dishCards = dishes.map((dish, index) => {
@@ -472,18 +537,23 @@ function showWine(wine, scanMeta = null) {
     return `<article class="dish-card">${dishImage ? `<img src="${escape(dishImage)}" alt="" loading="lazy">` : '<span class="dish-placeholder">Вино и еда</span>'}<strong>${escape(dish)}</strong></article>`;
   }).join('');
   $('result-screen').innerHTML = `
-    <div class="result-top"><button class="text-button" id="back-to-scanner">${icon('arrow-left')} К сканеру</button><span class="demo-badge">${wine.demo ? 'Пример карточки · не результат сканирования' : wine.uncertain ? 'Наиболее похожее · проверьте название' : 'Вино найдено'}</span></div>
+    <div class="result-top"><button class="text-button" id="back-to-scanner">${icon('arrow-left')} К сканеру</button>${wine.demo ? '<span class="demo-badge">Пример карточки · не результат сканирования</span>' : ''}</div>
     ${scanDebugMarkup}
-    <div class="result-layout"><div class="wine-portrait">${image ? `<img src="${escape(image)}" alt="${escape(wine.name)}"/>` : '<span>Фото пока нет</span>'}<button class="portrait-save icon-action" id="save-wine" type="button" aria-label="Сохранить вино">${icon('bookmark')}</button><span class="portrait-caption">СВОЁ ВИНО · РОССИЙСКИЕ ВИНОДЕЛЬНИ</span></div>
+    <div class="result-layout">
+    <div class="wine-hero"><div class="wine-portrait">${image ? `<img src="${escape(image)}" alt="${escape(wine.name)}"/>` : '<span>Фото пока нет</span>'}</div>
     <div class="wine-details"><p class="eyebrow">${escape(wine.winery)}</p><h1>${escape(wine.name)}</h1><p class="wine-category">${escape(wine.category || '')}${wine.region ? ' · ' + escape(wine.region) : ''}</p>
     ${visualFacts ? `<section class="catalog-visuals" aria-label="Характеристики из каталога"><div class="visual-facts">${visualFacts}</div></section>` : ''}
-    <section class="rating-card" aria-labelledby="user-rating-title"><div class="public-rating"><span class="public-rating-glass">${ratingGlass()}</span><div><small>НАРОДНЫЙ РЕЙТИНГ</small><strong>${escape(rating || '—')}</strong><em>${rating ? 'из 5 · по каталогу' : 'пока нет данных'}</em></div></div><span class="rating-divider" aria-hidden="true"></span><div class="inline-user-rating"><h2 id="user-rating-title">Ваша оценка</h2><div class="rating-options" role="radiogroup" aria-label="Оценка вина">${[1,2,3,4,5].map(value => `<button class="rating-option" type="button" role="radio" aria-checked="false" aria-label="${value} из 5" data-user-rating="${value}"><span class="rating-glass">${ratingGlass()}</span></button>`).join('')}</div></div></section><p class="rating-status" id="rating-status">Нажмите на бокал, чтобы оценить</p>
+    <div class="wine-facts">${wine.alcohol ? `<span><small>КРЕПОСТЬ</small>${escape(wine.alcohol)}</span>` : ''}${wine.volume ? `<span><small>ОБЪЁМ</small>${escape(wine.volume)}</span>` : ''}${wine.year ? `<span><small>ГОД</small>${escape(wine.year)}</span>` : ''}${wine.temperature ? `<span><small>ПОДАВАТЬ</small>${escape(wine.temperature)}</span>` : ''}${grapes.length ? `<span><small>СОРТ</small>${escape(grapes.join(', '))}</span>` : ''}</div></div>
+    <button class="portrait-save icon-action" id="save-wine" type="button" aria-label="Сохранить вино">${icon('bookmark')}</button></div>
+    <section class="rating-combo" aria-label="Оценки вина"><div class="public-rating" aria-label="Народный рейтинг ${escape(rating)} из 5"><div class="public-rating-badge"><img src="/assets/public-rating.svg" alt="" width="20" height="20"><span>${escape(rating)}</span></div></div><div class="user-rating" aria-labelledby="user-rating-title"><div class="rating-options" role="radiogroup" aria-label="Оценка вина">${[1,2,3,4,5].map(value => `<button class="rating-option" type="button" role="radio" aria-checked="false" aria-label="${value} из 5" data-user-rating="${value}"><span class="rating-icons"><img class="rating-icon-glass" src="/assets/public-rating-empty.svg" alt="" width="48" height="48"><img class="rating-icon-wine" src="/assets/public-rating-wine-in-glass.svg" alt="" width="48" height="48"></span></button>`).join('')}</div><p class="user-rating-cta" id="user-rating-title">Поставь свою оценку</p><p class="rating-status" id="rating-status" hidden></p></div></section>
+    <div class="result-actions"><button class="button secondary" id="compare-wine" type="button">${icon('compare')} Сравнить</button><button class="button secondary" id="scan-again">${icon('camera')} Сканировать другое</button></div>
     ${fitMarkup}
-    <section class="taste-profile" aria-labelledby="taste-profile-title"><div class="taste-profile-heading"><h2 id="taste-profile-title">Вкусовые свойства</h2><span>Оценка по данным каталога</span></div>${tasteDimensions.map(({ key, label }) => `<div class="taste-row"><span>${escape(label)}</span><i><em style="width:${tasteProfile[key] * 20}%"></em></i><b>${tasteProfile[key]}/5</b></div>`).join('')}</section>
-    <p class="wine-summary">${escape(wine.summary || wine.description || 'Описание пока не добавлено.')}</p><div class="taste-tags">${aromaNotes.map(tag => `<span>${escape(tag)}</span>`).join('')}</div>
-    <div class="wine-facts"><span><small>СОРТ ВИНОГРАДА</small>${escape(grapes.join(', ') || 'Не указан')}</span><span><small>РЕГИОН</small>${escape(wine.region || 'Не указан')}</span>${wine.temperature ? `<span><small>ПОДАВАТЬ</small>${escape(wine.temperature)}</span>` : ''}${wine.alcohol ? `<span><small>КРЕПОСТЬ</small>${escape(wine.alcohol)}</span>` : ''}</div>
-    <div class="result-actions"><button class="button primary" id="compare-wine" type="button">${icon('compare')} Сравнить</button><button class="button secondary" id="scan-again">${icon('camera')} Сканировать следующее</button></div></div></div>
+    <div class="result-split">
+    <div class="result-taste"><section class="taste-profile" aria-labelledby="taste-profile-title"><div class="taste-profile-heading"><h2 id="taste-profile-title">Вкусовые свойства</h2><span>Оценка по данным каталога</span></div>${tasteDimensions.map(({ key, label }) => `<div class="taste-row"><span>${escape(label)}</span><i><em style="width:${tasteProfile[key] * 20}%"></em></i><b>${tasteProfile[key]}/5</b></div>`).join('')}</section>
+    <p class="wine-summary">${escape(wine.summary || wine.description || 'Описание пока не добавлено.')}</p><div class="taste-tags">${aromaNotes.map(tag => `<span>${escape(tag)}</span>`).join('')}</div></div>
     ${dishes.length ? `<section class="dish-pairings"><div class="dish-pairings-heading"><div>${icon('utensils')}<h2>Сочетание с блюдами</h2></div><span>Из каталога «Своё Вино»</span></div><div class="dish-grid">${dishCards}</div></section>` : ''}
+    </div>
+    </div>
     <section class="after-search" id="after-search">
       <div class="dish-pairings-heading"><div>${icon('compare')}<h2>Российские аналоги</h2></div><span>Другие винодельни, похожий стиль</span></div>
       <p class="muted" id="alternatives-status">Подбираем вина из каталога…</p>
@@ -499,8 +569,7 @@ function showWine(wine, scanMeta = null) {
       <p class="pairing-explanation" id="sommelier-hint">Выберите ситуацию — предложим российские вина из каталога.</p>
       <div class="alt-grid" id="sommelier-grid"></div>
     </section>
-    ${wine.demo ? `<section class="pairings"><div class="pairings-heading">${icon('utensils')}<h2>Что у вас на ужин?</h2></div><p class="muted">Выберите блюдо — подскажем, как оно сочетается с этим стилем вина.</p><div class="food-buttons"><button data-food="fish" aria-pressed="true">Рыба и морепродукты</button><button data-food="cheese" aria-pressed="false">Мягкий сыр</button><button data-food="salad" aria-pressed="false">Лёгкий салат</button><button data-food="steak" aria-pressed="false">Стейк</button><button data-food="dessert" aria-pressed="false">Десерт</button></div><p class="pairing-explanation" id="pairing-explanation"></p></section>` : ''}
-    <details class="description" open><summary><span>О вине</span><span class="description-toggle"><span class="description-hide">Свернуть</span><span class="description-show">Читать</span></span></summary><p>${escape(wine.description || 'Описание пока не добавлено.')}</p></details>`;
+    ${wine.demo ? `<section class="pairings"><div class="pairings-heading">${icon('utensils')}<h2>Что у вас на ужин?</h2></div><p class="muted">Выберите блюдо — подскажем, как оно сочетается с этим стилем вина.</p><div class="food-buttons"><button data-food="fish" aria-pressed="true">Рыба и морепродукты</button><button data-food="cheese" aria-pressed="false">Мягкий сыр</button><button data-food="salad" aria-pressed="false">Лёгкий салат</button><button data-food="steak" aria-pressed="false">Стейк</button><button data-food="dessert" aria-pressed="false">Десерт</button></div><p class="pairing-explanation" id="pairing-explanation"></p></section>` : ''}`;
   $('back-to-scanner').onclick = $('scan-again').onclick = backToScanner;
   $('save-wine').onclick = saveWine;
   $('compare-wine').onclick = () => toggleCompare(wine);
@@ -518,7 +587,9 @@ function showWine(wine, scanMeta = null) {
       button.classList.toggle('filled', buttonValue <= normalized);
       button.setAttribute('aria-checked', String(buttonValue === normalized));
     });
-    $('rating-status').textContent = normalized ? `Ваша оценка: ${normalized} из 5` : 'Нажмите на бокал, чтобы оценить';
+    $('rating-status').textContent = normalized ? `Ваша оценка: ${normalized} из 5` : '';
+    const cta = $('user-rating-title');
+    if (cta) cta.textContent = normalized ? `Ваша оценка: ${normalized} из 5` : 'Поставь свою оценку';
     refreshFitCard();
   };
   document.querySelectorAll('[data-user-rating]').forEach(button => button.onclick = () => setUserRating(Number(button.dataset.userRating)));
@@ -537,10 +608,45 @@ function showWine(wine, scanMeta = null) {
   $('result-screen').focus({ preventScroll:true }); window.scrollTo({ top:0, behavior:'instant' });
   bindAfterSearch(wine, scanMeta);
 }
+function showNotFound(result, elapsed) {
+  stopCamera();
+  currentWine = null;
+  notice('');
+  $('scanner-screen').hidden = true;
+  $('result-screen').hidden = false;
+  const lookalikes = withLabelScores(result.lookalikes, result).filter(item => item?.slug);
+  const alternatives = Array.isArray(result.alternatives) ? result.alternatives.filter(item => item?.slug) : [];
+  const scanDebugMarkup = renderScanDebug({ result, elapsed });
+  const emptyHint = 'Попробуйте снять этикетку ближе, без бликов и соседних бутылок.';
+  $('result-screen').innerHTML = `
+    <div class="result-top"><button class="text-button" id="back-to-scanner">${icon('arrow-left')} К сканеру</button><span class="demo-badge">В каталоге нет точного совпадения</span></div>
+    ${scanDebugMarkup}
+    <section class="not-found-banner">
+      <p class="eyebrow">Результат сканирования</p>
+      <h1>Такого вина у нас нет</h1>
+      <p class="muted">Ниже — похожие вина по этикетке или по вкусу.</p>
+    </section>
+    <section class="after-search" id="after-search">
+      <div class="dish-pairings-heading"><div>${icon('camera')}<h2>Похожие по этикетке</h2></div><span>Из каталога</span></div>
+      ${lookalikes.length ? '' : `<p class="muted" id="lookalikes-status">Похожих этикеток в каталоге нет. ${emptyHint}</p>`}
+      <div class="alt-grid" id="lookalikes-grid">${lookalikes.map(wineMiniCard).join('')}</div>
+      <div class="dish-pairings-heading sommelier-heading"><div>${icon('compare')}<h2>Похожие по вкусу</h2></div><span>Другие винодельни, близкий стиль</span></div>
+      <p class="muted" id="alternatives-status">${alternatives.length ? 'Если этикетка не совпала, посмотрите вина похожего стиля.' : 'Похожих вин по вкусу пока нет.'}</p>
+      <div class="alt-grid" id="alternatives-grid">${alternatives.map(wineMiniCard).join('')}</div>
+    </section>
+    <div class="result-actions"><button class="button secondary" id="scan-again">${icon('camera')} Сканировать другое</button></div>`;
+  $('back-to-scanner').onclick = $('scan-again').onclick = backToScanner;
+  bindMiniCards($('lookalikes-grid'));
+  bindMiniCards($('alternatives-grid'));
+  $('result-screen').focus({ preventScroll:true });
+  window.scrollTo({ top:0, behavior:'instant' });
+  if (debugMode) showDiagnostics(result, elapsed);
+}
 function backToScanner() { $('result-screen').hidden = true; $('scanner-screen').hidden = false; $('show-example')?.focus({ preventScroll:true }); window.scrollTo({ top:0, behavior:'instant' }); }
 function wineMiniCard(item) {
   const image = resolveImageUrl(item.image_url, item.photo_name || item.image_name);
-  return `<article class="alt-card" data-open-slug="${escape(item.slug)}">${image ? `<img src="${escape(image)}" alt="" loading="lazy">` : '<span class="dish-placeholder">Нет фото</span>'}<div><small>${escape(item.winery || '')}</small><strong>${escape(item.name || '')}</strong><em>${escape([item.category, item.region].filter(Boolean).join(' · '))}</em></div></article>`;
+  const score = formatScorePct(item.label_score);
+  return `<article class="alt-card" data-open-slug="${escape(item.slug)}">${image ? `<img src="${escape(image)}" alt="" loading="lazy">` : '<span class="dish-placeholder">Нет фото</span>'}<div><small>${escape(item.winery || '')}</small><strong>${escape(item.name || '')}</strong><em>${escape([item.category, item.region].filter(Boolean).join(' · '))}</em></div>${score ? `<span class="alt-card-score" aria-label="Сходство этикетки ${escape(score)}">${escape(score)}</span>` : ''}</article>`;
 }
 function bindMiniCards(root, fallback) {
   root?.querySelectorAll('[data-open-slug]').forEach(card => {
@@ -608,12 +714,10 @@ function saveWine() {
   const index = saved.findIndex(wine => wine.slug === currentWine.slug);
   if (index >= 0) {
     saved.splice(index, 1);
-    if (persist()) toast('Вино убрано из сохранённых');
-    else saved = previous;
+    if (!persist()) saved = previous;
   } else {
     saved = [{ ...currentWine }, ...saved].slice(0, 100);
-    if (persist()) toast('Вино сохранено');
-    else saved = previous;
+    if (!persist()) saved = previous;
   }
   syncSaveButton();
   refreshFitCard();
@@ -630,7 +734,7 @@ function refreshFitCard() {
       card.remove();
     }
   } else if (markup) {
-    $('rating-status')?.insertAdjacentHTML('afterend', markup);
+    document.querySelector('.rating-combo')?.insertAdjacentHTML('afterend', markup);
   }
 }
 function renderSaved() {

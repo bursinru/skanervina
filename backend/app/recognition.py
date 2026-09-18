@@ -3,7 +3,7 @@ import os
 import logging
 from time import perf_counter
 from io import BytesIO
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .catalog import WineCatalog, normalize
 from .label_detection import crop_label, detect_label, enhance_label
@@ -194,7 +194,7 @@ class Recognizer:
             best = candidates[0]
             margin = best['score'] - candidates[1]['score'] if len(candidates) > 1 else 0
             wine = self.catalog.get(best['slug'])
-            threshold = float(os.getenv('CV_MATCH_THRESHOLD', '0.88'))
+            threshold = float(os.getenv('CV_MATCH_THRESHOLD', '0.80'))
             min_margin = float(os.getenv('CV_MATCH_MARGIN', '0.04'))
             text, ocr_status, text_matches, ocr_ms = "", "skipped", [], 0.0
             corroborated = False
@@ -222,16 +222,22 @@ class Recognizer:
             ranking = ranking_metrics(candidates)
             metrics["candidates"] = ranking["top5"]
             metrics["timings_ms"].update(visual=round(visual_ms, 1), ocr=round(ocr_ms, 1))
+            status = 'matched' if matched else ('uncertain' if best['score'] >= 0.65 else 'unknown')
+            lookalike_items = [
+                item for item in candidates
+                if not (status == 'matched' and wine and item['slug'] == wine.slug)
+            ]
             result = {
-                'status': 'matched' if matched else ('uncertain' if best['score'] >= 0.65 else 'unknown'),
+                'status': status,
                 'confidence': round(best['score'], 4),
                 'recognition': metrics,
                 'ranking': ranking,
+                'lookalikes': self._lookalike_cards(lookalike_items),
             }
             if wine:
                 result['slug'] = wine.slug
                 result['alternatives'] = recommend_alternatives(self.catalog, wine)
-                if result['status'] != 'unknown':
+                if status == 'matched':
                     result['wine'] = wine.to_card()
             return result
         if kind == "image" or os.getenv('CV_ENABLED', 'false').lower() == 'true':
@@ -240,6 +246,33 @@ class Recognizer:
             return {'status': 'unknown', 'recognition': metrics}
         text, ocr_status = self._ocr(self._image_bytes(work_image), psm=6)
         return self._ocr_result(text, ocr_status, base_metrics('ocr+catalog'), 0.0, include_candidates)
+
+    def _lookalike_cards(self, items: Iterable[Any], limit: int = 5) -> List[Dict[str, Any]]:
+        cards: List[Dict[str, Any]] = []
+        seen = set()
+        for item in items:
+            if isinstance(item, dict):
+                slug = item.get('slug')
+                score = item.get('score')
+            elif hasattr(item, 'wine'):
+                slug = item.wine.slug
+                score = getattr(item, 'score', None)
+            else:
+                slug = item
+                score = None
+            if not slug or slug in seen:
+                continue
+            wine = self.catalog.get(slug)
+            if not wine:
+                continue
+            card = wine.to_card()
+            if score is not None:
+                card['label_score'] = round(float(score), 4)
+            cards.append(card)
+            seen.add(slug)
+            if len(cards) >= limit:
+                break
+        return cards
 
     def _ocr_result(self, text, ocr_status, metrics, ocr_ms=0.0, include_candidates=False):
         metrics['ocr'] = ocr_status
@@ -268,6 +301,8 @@ class Recognizer:
         best = matches[0]
         metrics["ocr_best"] = {"slug": best.wine.slug, "score": round(best.score, 4)}
         metrics["ocr_text"] = text[:500]
+        lookalikes = self._lookalike_cards(matches)
+        alternatives = recommend_alternatives(self.catalog, best.wine)
         if best.score >= self.MATCH_THRESHOLD and self._text_evidence(best):
             return {
                 "status": "matched",
@@ -275,17 +310,22 @@ class Recognizer:
                 "wine": best.wine.to_card(),
                 "confidence": round(best.score, 3),
                 "recognition": metrics,
+                "lookalikes": lookalikes,
+                "alternatives": alternatives,
             }
         if best.score >= self.UNCERTAIN_THRESHOLD:
             return {
                 "status": "uncertain",
                 "slug": best.wine.slug,
-                "wine": best.wine.to_card(),
                 "confidence": round(best.score, 3),
                 "recognition": {**metrics, "reason": "low_confidence"},
+                "lookalikes": lookalikes,
+                "alternatives": alternatives,
             }
         return {
             "status": "unknown",
             "confidence": round(best.score, 3),
             "recognition": {**metrics, "reason": "no_confident_match"},
+            "lookalikes": lookalikes,
+            "alternatives": alternatives,
         }

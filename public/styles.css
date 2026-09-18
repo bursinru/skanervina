@@ -30,22 +30,6 @@ body{background:#fffdfb}
   .header nav{gap:22px;padding-left:28px;font-size:15px}
 }
 
-/* Built-in SVG icons and the expanded description panel. */
-.description{margin-top:24px;border:1px solid var(--line);border-radius:20px;background:#fffdfa;overflow:hidden;box-shadow:0 8px 24px #4c302b0b}
-.description summary{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:18px 20px;list-style:none;cursor:pointer;font:400 25px/1.15 Georgia,serif}
-.description summary::-webkit-details-marker{display:none}
-.description summary::after{content:'⌃';color:var(--wine);font:22px/1 Arial,sans-serif;transition:transform .2s ease}
-.description:not([open]) summary::after{content:'⌄'}
-.description-toggle{color:var(--muted);font:12px/1.2 var(--font);letter-spacing:.2px}
-.description-show{display:none}
-.description:not([open]) .description-hide{display:none}
-.description:not([open]) .description-show{display:inline}
-.description p{margin:0;padding:0 20px 21px;font-size:15px;line-height:1.72;color:#4f4742}
-@media(max-width:720px){
-  .description{margin-top:19px;border-radius:17px}
-  .description summary{padding:16px 15px;font-size:23px}
-  .description p{padding:0 15px 17px;font-size:14px;line-height:1.65}
-}
 @media(max-width:1080px){
   .header{padding-left:24px;gap:18px}
   .header nav{gap:15px;font-size:14px}
@@ -103,29 +87,39 @@ body{background:#fffdfb}
 .catalog-rating>span{margin:0;font-size:11px;letter-spacing:.35px;color:var(--muted)}
 .catalog-rating strong{font-size:16px;font-weight:600}
 .catalog-rating small{font-size:11px;color:var(--muted);margin-left:auto}
-.user-rating{margin:18px 0 26px;padding:26px 22px 20px;border-radius:22px;background:#fff8ec;text-align:center}
-.user-rating h2{margin:0 0 21px;font:400 31px/1.15 Georgia,serif;letter-spacing:-.6px}
-.rating-options{display:flex;justify-content:center;gap:6px}
-.rating-option{width:72px;height:86px;padding:8px;border:0;border-radius:21px;background:transparent;color:#b8b1a8;display:grid;place-items:center;transition:background .2s ease,color .2s ease,transform .2s ease}
-.rating-option:hover,.rating-option:focus-visible{background:#fbf0cf;color:#a27450;transform:translateY(-2px)}
-.rating-option.filled{background:#fff0c8;color:#b77a48}
-.rating-glass{display:block;width:55px;height:67px;transform:rotate(7deg);transition:transform .2s ease}
-.rating-option:hover .rating-glass,.rating-option:focus-visible .rating-glass,.rating-option.filled .rating-glass{transform:rotate(7deg) scale(1.04)}
-.rating-glass svg{width:55px;height:67px;stroke:currentColor;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round;fill:none}
-.rating-glass .rating-glass-body{fill:#e6e0d7;stroke:none}
-.rating-option.filled .rating-glass .rating-glass-body{fill:#ddae76}
-.rating-glass svg path:nth-child(3){stroke-width:2.5}
-.rating-status{min-height:19px;margin:12px 0 0;color:var(--muted);font-size:12px}
+.rating-combo{display:grid;grid-template-columns:auto minmax(180px,1fr);align-items:center;gap:12px 16px;margin:18px 0 22px;padding:18px 20px;border-radius:24px;background:#f8f2e9}
+.public-rating{display:flex;align-items:center;min-width:0}
+.public-rating-badge{display:flex;align-items:center;gap:6px;padding:6px 12px 6px 10px;border-radius:16px;background:#f8ecc9;color:#8f3d42}
+.public-rating-badge img{flex:0 0 20px;width:20px;height:20px;display:block;transform:scale(1.6) translateY(-2px)}
+.public-rating-badge span{color:#2c2a28;font-size:16px;font-weight:600;line-height:20px;font-variant-numeric:tabular-nums}
+.user-rating{margin:0;padding:0;background:transparent;border-radius:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-width:0}
+.user-rating-cta{margin:8px 0 0;padding:9px 18px;border-radius:40px;background:#f4e4b8;color:#2c2a28;font:500 14px/1.2 Georgia,"Times New Roman",serif}
+.rating-options{display:flex;justify-content:center;align-items:center;gap:0;margin:0}
+.rating-option{position:relative;width:44px;height:44px;padding:2px;border:0;border-radius:12px;background:transparent;transition:background-color .15s ease-in}
+.rating-icons{position:absolute;top:50%;left:50%;width:40px;height:40px;transform:translate(-50%,-50%)}
+.rating-icon-glass,.rating-icon-wine{position:absolute;top:50%;left:50%;width:40px;height:40px;display:block;pointer-events:none;transform:translate(-50%,-50%);transition:transform .15s ease-in}
+.rating-icon-wine{transform:translate(-50%,-50%) scale(0)}
+.rating-option.filled .rating-icons{animation:.3s ease-in-out backwards rating-sway}
+.rating-option.filled .rating-icon-wine{transform:translate(-50%,-50%) scale(1)}
+.rating-options:hover .rating-option{background:#f8ecc9}
+.rating-options:hover .rating-option .rating-icon-glass,
+.rating-options:hover .rating-option .rating-icon-wine{transform:translate(-50%,-50%) rotate(-15deg)}
+.rating-options:hover .rating-option .rating-icon-wine{transform:translate(-50%,-50%) rotate(-15deg) scale(1)}
+.rating-options:hover .rating-option:hover ~ .rating-option{background:transparent}
+.rating-options:hover .rating-option:hover ~ .rating-option .rating-icon-glass{transform:translate(-50%,-50%) rotate(0)}
+.rating-options:hover .rating-option:hover ~ .rating-option .rating-icon-wine{transform:translate(-50%,-50%) rotate(0) scale(0)}
+.rating-options:hover .rating-option:hover ~ .rating-option.filled .rating-icon-wine{transform:translate(-50%,-50%) rotate(0) scale(0)}
+.rating-status{margin:8px 0 0;color:#2c2a28;font:600 16px/1.5 var(--font)}
+.rating-status:empty,[hidden].rating-status{display:none}
+@keyframes rating-sway{0%,to{transform:translate(-50%,-50%) rotate(0)}25%{transform:translate(-50%,-50%) rotate(-4deg)}75%{transform:translate(-50%,-50%) rotate(4deg)}}
 
 @media(max-width:720px){
   .catalog-rating{align-items:flex-start;flex-wrap:wrap;gap:7px 10px}
   .catalog-rating small{width:100%;margin-left:0}
-  .user-rating{margin-bottom:22px;padding:23px 12px 17px}
-  .user-rating h2{font-size:27px;margin-bottom:18px}
-  .rating-options{gap:1px}
-  .rating-option{width:59px;height:77px;border-radius:17px}
-  .rating-glass{transform:rotate(7deg) scale(.85)}
-  .rating-option:hover .rating-glass,.rating-option:focus-visible .rating-glass,.rating-option.filled .rating-glass{transform:rotate(7deg) scale(.89)}
+  .rating-combo{margin:16px 0 18px;padding:14px 12px 12px;gap:8px 10px;grid-template-columns:auto minmax(0,1fr)}
+  .rating-option{width:38px;height:38px}
+  .rating-icons,.rating-icon-glass,.rating-icon-wine{width:34px;height:34px}
+  .user-rating-cta{font-size:13px;padding:8px 14px}
 }
 
 /* Catalog imagery: reuse the public CDN thumbnails for metadata and food pairings. */
@@ -137,7 +131,12 @@ body{background:#fffdfb}
 .visual-fact small{display:block;color:var(--muted);font-size:9px;letter-spacing:.45px;margin-bottom:4px}
 .visual-fact strong{display:block;font-size:12px;font-weight:600;line-height:1.3}
 .visual-fact em{display:block;color:var(--muted);font-size:10px;font-style:normal;margin-top:3px}
-.visual-fact-color{padding-left:13px}
+.visual-fact-color{padding:10px 14px;border:0}
+.visual-fact-color small,.visual-fact-color strong,.visual-fact-color em{color:inherit}
+.visual-fact-color.color-tone-white{background:#eadfbe;color:#3a342c}
+.visual-fact-color.color-tone-red{background:#78313a;color:#fff6ee}
+.visual-fact-color.color-tone-orange{background:#c8793c;color:#fff7ee}
+.visual-fact-color.color-tone-rose{background:#d9959c;color:#3a2428}
 .color-dot{width:28px;height:50px;flex:0 0 28px;border-radius:15px;border:1px solid #d4cbbf;box-shadow:inset 0 0 0 5px #ffffffaa}
 .color-dot-white{background:#eadfbe}
 .color-dot-red{background:#78313a;border-color:#642931}
@@ -146,7 +145,9 @@ body{background:#fffdfb}
 .dish-pairings{margin-top:25px;padding:22px 24px;border-radius:19px;background:#f8f2e9}
 .dish-pairings-heading{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:15px}
 .dish-pairings-heading>div{display:flex;align-items:center;gap:10px}
-.dish-pairings-heading svg{width:20px;height:20px;color:var(--wine)}
+.dish-pairings-heading svg,.dish-pairings-heading .icon-compare{width:20px;height:20px;color:var(--wine)}
+.icon-compare{width:22px;height:22px;flex:0 0 auto;display:inline-block;vertical-align:middle;background:currentColor;-webkit-mask:url(/assets/compare-bottles.png) center/contain no-repeat;mask:url(/assets/compare-bottles.png) center/contain no-repeat}
+.button .icon-compare{width:22px;height:22px}
 .dish-pairings-heading h2{font:27px Georgia,serif;margin:0}
 .dish-pairings-heading>span{font-size:10px;color:var(--muted);white-space:nowrap}
 .dish-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
@@ -174,25 +175,6 @@ body{background:#fffdfb}
 .icon-action:hover,.icon-action:focus-visible{transform:translateY(-2px);background:#fff5e7}
 .icon-action.is-saved{background:var(--wine);color:#fffdfb}
 .icon-action svg{width:25px;height:25px}
-.rating-card{display:grid;grid-template-columns:minmax(0,1fr) 1px minmax(0,1.35fr);align-items:center;gap:18px;margin:22px 0 0;padding:17px 19px;border-radius:20px;background:#f8f2e9}
-.public-rating{display:flex;align-items:center;gap:12px;min-width:0}
-.public-rating-glass{display:grid;place-items:center;width:38px;height:54px;color:var(--wine);flex:0 0 38px}
-.public-rating-glass .rating-glass{width:38px;height:50px;transform:rotate(4deg)}
-.public-rating-glass .rating-glass svg{width:38px;height:50px}
-.public-rating-glass .rating-glass-body{fill:var(--wine)}
-.public-rating small,.inline-user-rating h2{display:block;margin:0;color:var(--muted);font-size:10px;font-weight:500;letter-spacing:.3px;line-height:1.2}
-.public-rating strong{display:block;margin-top:3px;font-size:28px;line-height:1;font-weight:500}
-.public-rating em{display:block;margin-top:4px;color:var(--muted);font-size:10px;font-style:normal;line-height:1.2}
-.rating-divider{width:1px;height:52px;background:#d9cfc2}
-.inline-user-rating{min-width:0}
-.inline-user-rating h2{font-size:11px;margin:0 0 5px}
-.inline-user-rating .rating-options{justify-content:flex-start;gap:1px}
-.inline-user-rating .rating-option{width:35px;height:57px;padding:2px;border-radius:12px}
-.inline-user-rating .rating-glass{width:30px;height:45px;transform:rotate(6deg) scale(.78)}
-.inline-user-rating .rating-glass svg{width:43px;height:55px}
-.inline-user-rating .rating-option:hover .rating-glass,.inline-user-rating .rating-option:focus-visible .rating-glass,.inline-user-rating .rating-option.filled .rating-glass{transform:rotate(6deg) scale(.83)}
-.inline-user-rating .rating-option.filled{background:#fff0c8}
-.rating-status{margin:7px 0 0;padding-left:3px;text-align:right}
 .fit-card{display:flex;align-items:center;gap:15px;margin-top:16px;padding:16px 18px;border:1px solid #ead8ca;border-radius:18px;background:#fffaf3}
 .fit-card>strong{min-width:67px;color:var(--wine);font-size:31px;line-height:1;font-weight:550;letter-spacing:-1px}
 .fit-card small{display:block;color:var(--muted);font-size:10px;letter-spacing:.5px;line-height:1.2}
@@ -208,7 +190,8 @@ body{background:#fffdfb}
 .taste-row>i em{display:block;height:100%;border-radius:inherit;background:var(--wine)}
 .taste-row>b{color:var(--muted);font-size:11px;font-weight:400;text-align:right}
 .taste-profile .source-note{margin:17px 0 0;line-height:1.45}
-.result-actions{align-items:stretch}
+#compare-wine.secondary{background:#fffdfa;color:var(--ink)}
+#compare-wine.primary{background:var(--wine);color:#fff}
 .result-actions .button{flex:1}
 .saved-item-icon{width:22px;height:22px;display:grid;place-items:center;flex:0 0 22px;color:var(--wine)}
 .saved-item-icon svg{width:20px;height:20px}
@@ -216,7 +199,7 @@ body{background:#fffdfb}
 .saved-item .remove-saved svg{width:15px;height:15px}
 .compare-trigger{width:40px;height:40px;padding:0;border:0;border-radius:50%;display:flex;align-items:center;justify-content:center;gap:2px;background:transparent;color:var(--header-ink);position:relative}
 .compare-trigger:hover{background:#fffdfb}
-.compare-trigger svg{width:20px;height:20px}
+.compare-trigger svg,.compare-trigger .icon-compare{width:20px;height:20px}
 .compare-trigger b{position:absolute;right:-2px;top:-2px;min-width:17px;height:17px;padding:0 4px;border-radius:10px;background:var(--wine);color:#fff;font-size:10px;line-height:17px;font-weight:600}
 .compare-tray{position:fixed;left:50%;bottom:20px;z-index:8;width:min(760px,calc(100% - 32px));transform:translateX(-50%);display:flex;align-items:center;justify-content:space-between;gap:20px;padding:13px 15px 13px 20px;border:1px solid #e3d8ca;border-radius:18px;background:#fffdfbf2;box-shadow:0 12px 35px #4c302b26;backdrop-filter:blur(12px)}
 .compare-tray strong{font-size:14px;font-weight:600}
@@ -242,16 +225,6 @@ body{background:#fffdfb}
 @media(max-width:720px){
   .portrait-save{top:14px;right:14px;width:48px;height:48px}
   .wine-portrait{height:360px}
-  .rating-card{grid-template-columns:1fr;gap:10px;margin-top:18px;padding:14px 15px 11px}
-  .rating-divider{width:100%;height:1px}
-  .inline-user-rating{display:flex;align-items:center;justify-content:space-between;gap:8px}
-  .inline-user-rating h2{margin:0;white-space:nowrap}
-  .inline-user-rating .rating-options{flex:1;justify-content:flex-end}
-  .inline-user-rating .rating-option{width:31px;height:49px}
-  .inline-user-rating .rating-glass{transform:rotate(6deg) scale(.67)}
-  .inline-user-rating .rating-glass svg{width:40px;height:50px}
-  .inline-user-rating .rating-option:hover .rating-glass,.inline-user-rating .rating-option:focus-visible .rating-glass,.inline-user-rating .rating-option.filled .rating-glass{transform:rotate(6deg) scale(.72)}
-  .rating-status{text-align:left;padding-left:0;font-size:11px}
   .fit-card{align-items:flex-start;margin-top:14px;padding:14px}
   .fit-card>strong{min-width:54px;font-size:27px}
   .fit-card b{font-size:13px}
@@ -375,12 +348,105 @@ body{background:#fffdfb}
   .scan-debug-metrics em{grid-column:2;grid-row:2;margin-top:1px;text-align:right}
   .scan-debug-detail-row{gap:10px}.scan-debug-detail-row small{font-size:9px}.scan-debug-footnote{font-size:10px}
 }
+.not-found-banner{padding:22px 20px;border-radius:20px;background:#f6f1e8}
+.not-found-banner h1{margin:6px 0 10px;font-size:32px;letter-spacing:-.7px;line-height:1.15}
+.not-found-banner .muted{margin:0;max-width:42em}
+.alt-card-score{margin-left:auto;flex:0 0 auto;align-self:start;min-width:3.6em;padding:6px 8px;border-radius:999px;background:#f6f1e8;color:#792c38;font-size:12px;font-weight:700;letter-spacing:-.2px;text-align:center;font-variant-numeric:tabular-nums;line-height:1.2}
 .after-search{margin-top:25px;padding:22px 24px;border-radius:19px;background:#f8f2e9}
 .after-search .sommelier-heading{margin-top:22px}
-.alt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:12px}
-.alt-card{display:flex;gap:10px;align-items:center;padding:8px 10px;border:1px solid #e2d8ca;border-radius:14px;background:#fffdfa;cursor:pointer;text-align:left}
-.alt-card img,.alt-card .dish-placeholder{width:56px;height:56px;flex:0 0 56px;object-fit:cover;border-radius:10px}
-.alt-card small,.alt-card em{display:block;color:var(--muted);font-size:10px;font-style:normal}
-.alt-card strong{display:block;font-size:13px;line-height:1.3}
-@media(max-width:720px){.after-search{padding:20px 16px}.alt-grid{grid-template-columns:1fr}}
+.alt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:12px;align-items:stretch}
+.alt-card{display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:10px 12px;align-items:start;min-height:108px;padding:12px;border:1px solid #e2d8ca;border-radius:14px;background:#fffdfa;cursor:pointer;text-align:left}
+.alt-card img,.alt-card .dish-placeholder{width:46px;height:86px;flex:none;object-fit:contain;object-position:center;border-radius:8px;background:#f6f1e8}
+.alt-card .dish-placeholder{display:grid;place-items:center;font-size:9px}
+.alt-card>div{min-width:0}
+.alt-card small,.alt-card em{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;overflow:hidden;color:var(--muted);font-size:10px;font-style:normal;line-height:1.3}
+.alt-card strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin:3px 0;min-height:2.5em;font-size:13px;line-height:1.25}
+@media(max-width:720px){.after-search{padding:20px 16px}.alt-grid{grid-template-columns:1fr}.alt-card{min-height:0}}
+
+/* Compact result card: bottle + facts on one screen. */
+#result-screen .result-top{margin-bottom:12px}
+#result-screen .result-layout{display:flex;flex-direction:column;gap:12px}
+#result-screen .wine-hero{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px 12px;padding:12px 44px 14px 12px;border-radius:20px;background:#f6f1e8;position:relative;align-items:stretch}
+#result-screen .wine-portrait{height:auto;min-height:160px;border-radius:0;background:transparent}
+#result-screen .wine-portrait img{height:100%;width:100%;max-height:176px;object-fit:contain;mix-blend-mode:multiply}
+#result-screen .portrait-save{top:8px;right:8px;width:40px;height:40px;box-shadow:0 4px 12px #48332d14}
+#result-screen .portrait-save svg{width:18px;height:18px}
+#result-screen .wine-details{padding:2px 0 0}
+#result-screen .wine-details .eyebrow{margin-bottom:4px}
+#result-screen .wine-details h1{font-size:26px;letter-spacing:-.6px;line-height:1.15}
+#result-screen .wine-category{margin:4px 0 10px;font-size:13px}
+#result-screen .catalog-visuals{margin:0}
+#result-screen .visual-facts{gap:8px}
+#result-screen .visual-fact{min-height:52px;padding:5px 10px 5px 5px;border-radius:12px}
+#result-screen .visual-fact img{width:38px;height:38px;border-radius:8px}
+#result-screen .visual-fact-color{padding:8px 10px}
+#result-screen .wine-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 10px;margin-top:10px;padding-top:10px}
+#result-screen .wine-facts span{font-size:12px;min-width:0}
+#result-screen .rating-combo{margin:0;padding:12px 14px;border-radius:18px}
+#result-screen .fit-card{margin-top:0;padding:12px 14px}
+#result-screen .result-split{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:12px;align-items:start}
+#result-screen .taste-profile{margin-top:0;padding-top:0;border:0}
+#result-screen .taste-profile-heading{margin-bottom:8px}
+#result-screen .taste-profile-heading h2,#result-screen .dish-pairings-heading h2{font-size:22px}
+#result-screen .taste-row{margin:8px 0}
+#result-screen .wine-summary{margin:10px 0 0;font-size:14px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+#result-screen .taste-tags{margin:10px 0 0;gap:6px}
+#result-screen .taste-tags span{padding:5px 10px;font-size:11px}
+#result-screen .dish-pairings{margin-top:0;padding:14px}
+#result-screen .dish-pairings-heading{margin-bottom:10px}
+#result-screen .dish-card{min-height:56px;padding:6px 8px}
+#result-screen .dish-card img,#result-screen .dish-placeholder{width:44px;height:44px;flex-basis:44px}
+#result-screen .result-actions{margin-top:4px}
+@media(max-width:1000px){
+  #result-screen .wine-portrait{min-height:160px}
+  #result-screen .wine-portrait img{height:100%;max-height:200px}
+  #result-screen .wine-details h1{font-size:26px}
+}
+@media(max-width:720px){
+  #result-screen .result-layout{gap:10px}
+  #result-screen .wine-hero{grid-template-columns:78px minmax(0,1fr);padding:10px 40px 12px 10px;gap:8px 10px}
+  #result-screen .wine-portrait{min-height:140px}
+  #result-screen .wine-portrait img{max-height:180px}
+  #result-screen .wine-details h1{font-size:22px}
+  #result-screen .wine-category{font-size:12px;margin:3px 0 8px}
+  #result-screen .result-split{grid-template-columns:1fr;gap:10px}
+  #result-screen .taste-profile-heading h2,#result-screen .dish-pairings-heading h2{font-size:20px}
+  #result-screen .dish-pairings{padding:12px}
+  #result-screen .portrait-save{width:36px;height:36px;top:6px;right:6px}
+}
+
+@media(min-width:900px){
+  main{padding-top:12px}
+  .admin-tools{max-width:980px;margin:0 auto 10px;padding:8px 14px}
+  #scanner-screen{max-width:1040px}
+  #scanner-screen .page-heading{margin-bottom:16px}
+  #scanner-screen .page-heading h1{font-size:42px}
+  #scanner-screen .page-heading .subtitle{margin-top:8px;font-size:16px}
+  #scanner-screen .scanner-card{display:flex;justify-content:center;align-items:center;gap:12px;width:auto;max-width:100%;margin:0 auto}
+  #scanner-screen .viewfinder{flex:1 1 auto;width:min(640px,calc(100% - 212px));aspect-ratio:16/9;max-height:min(42vh,380px);height:auto}
+  #scanner-screen .example-bottle{width:auto;max-width:28%;height:90%;top:5%;left:50%;transform:translateX(-50%)}
+  #scanner-screen .scan-frame{width:34%;height:48%;top:24%}
+  #scanner-screen .viewfinder-caption{bottom:14px;padding:8px 14px;font-size:13px}
+  #scanner-screen .scanner-controls{flex:0 0 200px;padding:0;display:flex;flex-direction:column;justify-content:center;min-width:0}
+  #scanner-screen .scanner-controls .button-row{flex-direction:column;gap:12px;margin-top:0}
+  #scanner-screen .scanner-controls .button{width:100%;flex:none;min-height:52px;font-size:15px}
+  #scanner-screen .scanner-controls .notice{margin-top:12px}
+  .site-footer{margin-top:24px;padding:18px 32px 28px}
+  .footer-meta{min-height:72px;padding-top:14px}
+
+  #result-screen{max-width:1120px;margin:0 auto}
+  #result-screen .result-top{margin-bottom:8px}
+  #result-screen .result-layout{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);grid-template-areas:"hero split" "rating split" "actions split" "fit split";gap:10px 16px;align-items:start}
+  #result-screen .wine-hero{grid-area:hero;grid-template-columns:108px minmax(0,1fr);padding:12px 48px 12px 12px}
+  #result-screen .wine-portrait{min-height:148px}
+  #result-screen .wine-portrait img{max-height:168px}
+  #result-screen .wine-details h1{font-size:28px}
+  #result-screen .rating-combo{grid-area:rating}
+  #result-screen .fit-card{grid-area:fit}
+  #result-screen .result-split{grid-area:split;grid-template-columns:1fr;gap:10px}
+  #result-screen .result-actions{grid-area:actions;flex-direction:row;margin-top:0;gap:8px}
+  #result-screen .result-actions .button{width:auto;flex:1}
+  #result-screen .after-search{margin-top:14px;padding:16px 18px}
+  #result-screen .alt-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
 

@@ -42,6 +42,7 @@ class WineCard(BaseModel):
     dish_image_urls: list[str] = Field(default_factory=list)
     source_url: Optional[str] = None
     source: str = "Каталог «Своё Вино»"
+    label_score: Optional[float] = None
 
 
 class RecognizeResponse(BaseModel):
@@ -51,6 +52,7 @@ class RecognizeResponse(BaseModel):
     confidence: Optional[float] = None
     ranking: Dict[str, Any] = Field(default_factory=dict)
     alternatives: list[WineCard] = Field(default_factory=list)
+    lookalikes: list[WineCard] = Field(default_factory=list)
     recognition: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -193,7 +195,8 @@ async def recognize(request: Request, response: Response, image: UploadFile = Fi
     response.headers['Cache-Control'] = 'no-store'
     if not token and not debug_request:
         result = {**result, 'confidence': None, 'recognition': {
-            key: value for key, value in result.get('recognition', {}).items() if key in ('method', 'reason')
+            key: value for key, value in result.get('recognition', {}).items()
+            if key in ('method', 'reason', 'similarity', 'threshold', 'min_margin')
         }}
     return result
 
