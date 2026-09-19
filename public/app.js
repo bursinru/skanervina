@@ -352,13 +352,21 @@ function safeImage(url) { if (!url) return ''; try { const u = new URL(url, loca
 function resolveImageUrl(imageUrl, fileName) {
   const raw = String(imageUrl || fileName || '').trim();
   if (!raw) return '';
-  if (/^https?:\/\//i.test(raw) || raw.startsWith('/')) return safeImage(raw);
+  if (/^https?:\/\//i.test(raw) || raw.startsWith('/')) return usableBottleUrl(safeImage(raw));
   const base = window.SCANNER_CONFIG?.imageBaseUrl;
   if (!base) return '';
   try {
     const relative = raw.replace(/^\/?(?:uploads\/)?/, '').split('/').map(encodeURIComponent).join('/');
-    return safeImage(new URL(relative, base).href);
+    return usableBottleUrl(safeImage(new URL(relative, base).href));
   } catch { return ''; }
+}
+function usableBottleUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('/') && !url.includes('api.vino-svoe.ru')) return url;
+  const name = decodeURIComponent((url.split('/').pop() || '').split('?')[0]);
+  if (/_[0-9a-f]{8,}\.(webp|jpe?g|png)$/i.test(name)) return url;
+  if (url.includes('api.vino-svoe.ru') && /-/.test(name)) return '';
+  return url;
 }
 function formatRating(value) {
   const rating = Number(value);
@@ -675,13 +683,25 @@ async function openWineFromSlug(slug, { skipUrl = true } = {}) {
   }
 }
 function wineMiniCard(item) {
+  const slug = item.slug || '';
+  const href = slug ? `/scanner/${encodeURIComponent(slug)}` : '/scanner';
   const image = resolveImageUrl(item.image_url, item.photo_name || item.image_name);
   const score = formatScorePct(item.label_score);
-  return `<article class="alt-card" data-open-slug="${escape(item.slug)}">${image ? `<img src="${escape(image)}" alt="" loading="lazy">` : '<span class="dish-placeholder">Нет фото</span>'}<div><small>${escape(item.winery || '')}</small><strong>${escape(item.name || '')}</strong><em>${escape([item.category, item.region].filter(Boolean).join(' · '))}</em></div>${score ? `<span class="alt-card-score" aria-label="Сходство этикетки ${escape(score)}">${escape(score)}</span>` : ''}</article>`;
+  return `<a class="alt-card" href="${escape(href)}" data-open-slug="${escape(slug)}">${image ? `<img src="${escape(image)}" alt="" loading="lazy">` : '<span class="dish-placeholder">Нет фото</span>'}<div><small>${escape(item.winery || '')}</small><strong>${escape(item.name || '')}</strong><em>${escape([item.category, item.region].filter(Boolean).join(' · '))}</em></div>${score ? `<span class="alt-card-score" aria-label="Сходство этикетки ${escape(score)}">${escape(score)}</span>` : ''}</a>`;
 }
 function bindMiniCards(root, fallback) {
+  root?.querySelectorAll('img').forEach(img => {
+    img.addEventListener('error', () => {
+      const placeholder = document.createElement('span');
+      placeholder.className = 'dish-placeholder';
+      placeholder.textContent = 'Нет фото';
+      img.replaceWith(placeholder);
+    });
+  });
   root?.querySelectorAll('[data-open-slug]').forEach(card => {
-    card.onclick = async () => {
+    card.onclick = async event => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
       const slug = card.getAttribute('data-open-slug');
       try {
         const response = await fetch(`/v1/catalog/${encodeURIComponent(slug)}`);
@@ -690,6 +710,7 @@ function bindMiniCards(root, fallback) {
         showWine({ ...wine, demo: false });
       } catch {
         if (fallback) showWine(fallback);
+        else if (card.getAttribute('href')) location.assign(card.getAttribute('href'));
       }
     };
   });

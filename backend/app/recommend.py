@@ -1,7 +1,16 @@
 """Russian alternatives from other wineries and a rule-based sommelier."""
+import re
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 from .catalog import CatalogWine, WineCatalog, normalize, tokens
+
+_HASHED_PHOTO = re.compile(r"_[0-9a-f]{8,}\.(webp|jpe?g|png)$", re.I)
+
+
+def has_catalog_photo(wine: CatalogWine) -> bool:
+    name = urlparse(wine.image_url or "").path.rsplit("/", 1)[-1]
+    return bool(_HASHED_PHOTO.search(name))
 
 
 OCCASIONS = {
@@ -63,13 +72,16 @@ def alternative_score(source: CatalogWine, other: CatalogWine) -> float:
 
 
 def alternatives(catalog: WineCatalog, wine: CatalogWine, limit: int = 3) -> List[Dict[str, object]]:
-    ranked = sorted(
-        catalog,
-        key=lambda other: alternative_score(wine, other),
-        reverse=True,
-    )
-    picked = [item.to_card() for item in ranked if alternative_score(wine, item) > 0][:limit]
-    return picked
+    scored = [
+        (alternative_score(wine, other), other)
+        for other in catalog
+        if alternative_score(wine, other) > 0
+    ]
+    scored.sort(key=lambda item: item[0], reverse=True)
+    pool = [item for _, item in scored[:24]]
+    with_photo = [item for item in pool if has_catalog_photo(item)]
+    without_photo = [item for item in pool if not has_catalog_photo(item)]
+    return [item.to_card() for item in (with_photo + without_photo)[:limit]]
 
 
 def sommelier_reply(catalog: WineCatalog, occasion: str, current: Optional[CatalogWine] = None) -> Dict[str, object]:
@@ -93,7 +105,10 @@ def sommelier_reply(catalog: WineCatalog, occasion: str, current: Optional[Catal
         if score > 0:
             scored.append((score, wine))
     scored.sort(key=lambda item: item[0], reverse=True)
-    wines = [wine.to_card() for _, wine in scored[:3]]
+    pool = [wine for _, wine in scored[:24]]
+    with_photo = [wine for wine in pool if has_catalog_photo(wine)]
+    without_photo = [wine for wine in pool if not has_catalog_photo(wine)]
+    wines = [wine.to_card() for wine in (with_photo + without_photo)[:3]]
     return {
         "occasion": occasion,
         "label": spec["label"],

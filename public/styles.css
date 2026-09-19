@@ -355,7 +355,7 @@ body{background:#fffdfb}
 .after-search{margin-top:25px;padding:22px 24px;border-radius:19px;background:#f8f2e9}
 .after-search .sommelier-heading{margin-top:22px}
 .alt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:12px;align-items:stretch}
-.alt-card{display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:10px 12px;align-items:start;min-height:108px;padding:12px;border:1px solid #e2d8ca;border-radius:14px;background:#fffdfa;cursor:pointer;text-align:left}
+.alt-card{display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:10px 12px;align-items:start;min-height:108px;padding:12px;border:1px solid #e2d8ca;border-radius:14px;background:#fffdfa;color:inherit;text-decoration:none;cursor:pointer;text-align:left}
 .alt-card img,.alt-card .dish-placeholder{width:46px;height:86px;flex:none;object-fit:contain;object-position:center;border-radius:8px;background:#f6f1e8}
 .alt-card .dish-placeholder{display:grid;place-items:center;font-size:9px}
 .alt-card>div{min-width:0}
