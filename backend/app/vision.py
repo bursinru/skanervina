@@ -1,5 +1,7 @@
 """SigLIP 2 image embeddings and PostgreSQL cosine retrieval."""
+import hashlib
 import os
+from collections import defaultdict
 from threading import Lock
 from PIL import Image, ImageOps
 
@@ -14,6 +16,29 @@ def best_by_slug(rows, limit=5):
         if slug not in best or row['score'] > best[slug]['score']:
             best[slug] = row
     return sorted(best.values(), key=lambda item: item['score'], reverse=True)[:limit]
+
+
+def split_full_crop(rows):
+    """Bottle photos vs catalog label crops. Crops are hashed as sha256('crop:' + file digest)."""
+
+    hashes = {row['image_hash']: float(row['score']) for row in rows if row.get('image_hash') is not None}
+    crop_ids = {
+        hashlib.sha256(f'crop:{image_hash}'.encode()).hexdigest()
+        for image_hash in hashes
+    } & set(hashes)
+    full = [score for image_hash, score in hashes.items() if image_hash not in crop_ids]
+    crop = [score for image_hash, score in hashes.items() if image_hash in crop_ids]
+    full_score = max(full) if full else None
+    crop_score = max(crop) if crop else None
+    if crop_score is None and full_score is None:
+        best_view = None
+    elif crop_score is None:
+        best_view = 'full'
+    elif full_score is None:
+        best_view = 'crop'
+    else:
+        best_view = 'crop' if crop_score >= full_score else 'full'
+    return full_score, crop_score, best_view
 
 
 class ImageEncoder:
@@ -52,4 +77,24 @@ class VisualSearch:
                 FROM wine_embeddings WHERE model = %s
                 ORDER BY embedding <=> %s::vector LIMIT %s
             ''', (str(vector), MODEL_ID, str(vector), max(limit * 8, 16))).fetchall()
-        return best_by_slug(rows, limit)
+            ranked = best_by_slug(rows, limit)
+            slugs = [item['slug'] for item in ranked]
+            detailed = []
+            if slugs:
+                detailed = db.execute('''
+                    SELECT slug, image_hash, 1 - (embedding <=> %s::vector) AS score
+                    FROM wine_embeddings WHERE model = %s AND slug = ANY(%s)
+                ''', (str(vector), MODEL_ID, slugs)).fetchall()
+        grouped = defaultdict(list)
+        for row in detailed:
+            grouped[row['slug']].append(row)
+        scored = []
+        for item in ranked:
+            full_score, crop_score, best_view = split_full_crop(grouped.get(item['slug'], []))
+            scored.append({
+                **item,
+                'full_score': None if full_score is None else round(full_score, 4),
+                'crop_score': None if crop_score is None else round(crop_score, 4),
+                'best_view': best_view,
+            })
+        return scored

@@ -33,6 +33,7 @@ class Recognizer:
         self.settings = settings
         self.visual = None
         self.visual_status = 'disabled'
+        self._catalog_crop_cache: Dict[str, Optional[str]] = {}
         if os.getenv('CV_ENABLED', 'false').lower() == 'true':
             try:
                 from .vision import VisualSearch
@@ -243,7 +244,7 @@ class Recognizer:
                 ocr_delta=best.get('ocr_delta'),
                 color=color_features,
                 crop_jpeg_base64=self._preview_jpeg(work_image),
-                compared_with=self._compare_views(ranked[:2]),
+                compared_with=self._compare_views(ranked[:2], with_catalog_crops=include_candidates),
                 margin=round(margin, 4),
                 ocr=ocr_status,
                 ocr_characters=len(text),
@@ -267,6 +268,9 @@ class Recognizer:
                     "ocr_delta": item.get("ocr_delta"),
                     "image_hash": item.get("image_hash"),
                     "image_url": (self.catalog.get(item["slug"]).image_url if self.catalog.get(item["slug"]) else None),
+                    "full_score": item.get("full_score"),
+                    "crop_score": item.get("crop_score"),
+                    "best_view": item.get("best_view"),
                 }
                 for item in ranked[:5]
             ]
@@ -324,24 +328,73 @@ class Recognizer:
                 break
         return cards
 
-    def _compare_views(self, items: Iterable[Any]) -> List[Dict[str, Any]]:
+    def _compare_views(self, items: Iterable[Any], with_catalog_crops: bool = False) -> List[Dict[str, Any]]:
         views: List[Dict[str, Any]] = []
         for item in items:
             wine = self.catalog.get(item.get("slug")) if isinstance(item, dict) else None
             if not wine:
                 continue
-            views.append(
-                {
-                    "slug": wine.slug,
-                    "name": wine.name,
-                    "winery": wine.winery,
-                    "image_url": wine.image_url,
-                    "image_hash": item.get("image_hash"),
-                    "score": round(float(item.get("score") or 0), 4),
-                    "siglip": item.get("siglip"),
-                }
-            )
+            view = {
+                "slug": wine.slug,
+                "name": wine.name,
+                "winery": wine.winery,
+                "image_url": wine.image_url,
+                "label_jpeg_base64": self._catalog_label_preview(wine) if with_catalog_crops else None,
+                "indexed_views": ["full", "crop"],
+                "image_hash": item.get("image_hash"),
+                "score": round(float(item.get("score") or 0), 4),
+                "siglip": item.get("siglip"),
+                "full_score": item.get("full_score"),
+                "crop_score": item.get("crop_score"),
+                "best_view": item.get("best_view"),
+            }
+            views.append(view)
         return views
+
+    def _catalog_label_preview(self, wine) -> Optional[str]:
+        cached = self._catalog_crop_cache.get(wine.slug, "")
+        if cached != "":
+            return cached
+        preview = None
+        try:
+            image = self._load_catalog_image(wine)
+            if image is not None:
+                preview = self._preview_jpeg(crop_label(image, detect_label(image)))
+        except Exception:
+            logging.exception("Could not build catalog label preview for %s", wine.slug)
+        self._catalog_crop_cache[wine.slug] = preview
+        return preview
+
+    def _load_catalog_image(self, wine):
+        from pathlib import Path
+        from urllib.request import Request, urlopen
+
+        from PIL import Image, ImageOps
+
+        name = str(getattr(wine, "image_name", "") or "")
+        folders = []
+        extra = os.getenv("CATALOG_IMAGES", "").strip()
+        if extra:
+            folders.append(Path(extra))
+        catalog = os.getenv("CATALOG_CSV", "").strip()
+        if catalog:
+            parent = Path(catalog).parent
+            folders.extend((parent, parent / "uploads"))
+        for folder in folders:
+            path = folder / name if name else folder
+            if name and path.is_file():
+                with Image.open(path) as opened:
+                    return ImageOps.exif_transpose(opened).convert("RGB")
+        url = wine.image_url
+        if not url or not url.startswith("http"):
+            return None
+        request = Request(url, headers={"User-Agent": "skanervina-debug/1"})
+        with urlopen(request, timeout=3) as response:
+            payload = response.read(self.settings.max_image_bytes + 1)
+        if not payload or len(payload) > self.settings.max_image_bytes:
+            return None
+        with Image.open(BytesIO(payload)) as opened:
+            return ImageOps.exif_transpose(opened).convert("RGB")
 
     def _ocr_result(self, text, ocr_status, metrics, ocr_ms=0.0, include_candidates=False):
         metrics['ocr'] = ocr_status

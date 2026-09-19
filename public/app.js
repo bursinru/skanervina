@@ -490,6 +490,16 @@ function stopProcessingLog() {
   processingTimer = null;
   updateProcessingElapsed();
 }
+function formatPct(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${(number * 100).toFixed(1).replace('.', ',')}%` : '—';
+}
+function viewScoreLine(item) {
+  const bottle = formatPct(item.full_score);
+  const label = formatPct(item.crop_score);
+  const better = item.best_view === 'crop' ? 'этикетка' : item.best_view === 'full' ? 'бутылка' : '';
+  return `бутылка ${bottle} · этикетка ${label}${better ? ` · лучше ${better}` : ''}`;
+}
 function formatPoints(delta) {
   const value = Number(delta);
   if (!Number.isFinite(value)) return '—';
@@ -544,16 +554,17 @@ function renderScanDebug({ result, elapsed }) {
     : (result?.ranking?.top5 || []).slice(0, 2);
   const comparePair = compared.map((item, index) => {
     const catalogSrc = debugCatalogImage(item.image_url);
+    const catalogLabel = item.label_jpeg_base64 ? `data:image/jpeg;base64,${item.label_jpeg_base64}` : '';
     const place = index === 0 ? '1 место' : `${index + 1} место`;
     const pct = Number.isFinite(Number(item.score)) ? `${(Number(item.score) * 100).toFixed(1).replace('.', ',')}%` : '';
     const title = [item.winery, item.name || item.slug].filter(Boolean).join(' · ');
-    return `<div class="scan-debug-compare-pair"><figure>${cropSrc ? `<img class="crop-sent" src="${escape(cropSrc)}" alt="Crop запроса">` : '<span class="dish-placeholder">Crop не собран</span>'}<figcaption>Ваш crop</figcaption></figure><span class="scan-debug-compare-vs" aria-hidden="true">↔</span><figure>${catalogSrc ? `<img class="crop-sent" src="${escape(catalogSrc)}" alt="">` : '<span class="dish-placeholder">Нет фото каталога</span>'}<figcaption>${escape(place)} · ${escape(pct)} · ${escape(title)}</figcaption></figure></div>`;
+    const catalogShots = `<div class="catalog-match-shots">${catalogSrc ? `<figure><img class="crop-sent" src="${escape(catalogSrc)}" alt="Бутылка в каталоге"><figcaption>Бутылка · ${escape(formatPct(item.full_score))}</figcaption></figure>` : ''}${catalogLabel ? `<figure><img class="crop-sent" src="${escape(catalogLabel)}" alt="Кроп этикетки в индексе"><figcaption>Этикетка · ${escape(formatPct(item.crop_score))}</figcaption></figure>` : (catalogSrc ? '' : '<span class="dish-placeholder">Нет фото каталога</span>')}</div>`;
+    return `<div class="scan-debug-compare-pair"><figure>${cropSrc ? `<img class="crop-sent" src="${escape(cropSrc)}" alt="Crop запроса">` : '<span class="dish-placeholder">Crop не собран</span>'}<figcaption>Ваш crop</figcaption></figure><span class="scan-debug-compare-vs" aria-hidden="true">↔</span><div>${catalogShots}<p class="scan-debug-compare-note">${escape(place)} · итого ${escape(pct)} · ${escape(title)}. Сравнение раздельное: ${escape(viewScoreLine(item))}.</p></div></div>`;
   }).join('');
   const neighborCards = (result?.ranking?.top5 || []).map((item, index) => {
     const catalogSrc = debugCatalogImage(item.image_url);
     const pct = Number.isFinite(Number(item.score)) ? `${(Number(item.score) * 100).toFixed(1).replace('.', ',')}%` : '—';
-    const siglip = Number.isFinite(Number(item.siglip)) ? `${(Number(item.siglip) * 100).toFixed(1).replace('.', ',')}%` : '—';
-    return `<article class="scan-debug-neighbor">${catalogSrc ? `<img src="${escape(catalogSrc)}" alt="">` : '<span class="dish-placeholder">Нет фото</span>'}<div><small>${index + 1}. ${escape(item.winery || '')}</small><strong>${escape(item.name || item.slug || '')}</strong><em>итого ${escape(pct)} · картинка ${escape(siglip)} · цвет ${formatPoints(item.color_delta)} · OCR ${formatPoints(item.ocr_delta)}</em></div></article>`;
+    return `<article class="scan-debug-neighbor">${catalogSrc ? `<img src="${escape(catalogSrc)}" alt="">` : '<span class="dish-placeholder">Нет фото</span>'}<div><small>${index + 1}. ${escape(item.winery || '')}</small><strong>${escape(item.name || item.slug || '')}</strong><em>итого ${escape(pct)} · ${escape(viewScoreLine(item))} · цвет ${formatPoints(item.color_delta)} · OCR ${formatPoints(item.ocr_delta)}</em></div></article>`;
   }).join('');
   const cropMarkup = `<div class="scan-debug-crop">${photoUrl && (quadMarkup || boxStyle) ? `<figure><div class="crop-source"><img src="${escape(photoUrl)}" alt="Исходное фото">${quadMarkup || (boxStyle ? `<span class="crop-box" style="${boxStyle}"></span>` : '')}</div><figcaption>${quadMarkup ? 'Красный контур — панель этикетки, которую выпрямили' : 'Красная рамка — что вырезали'}</figcaption></figure>` : ''}${cropSrc ? `<figure><img class="crop-sent" src="${escape(cropSrc)}" alt="Crop"><figcaption>Этот crop сравнивали с каталогом</figcaption></figure>` : '<p class="scan-debug-footnote">Crop не пришёл — проверьте, что фото ещё в превью.</p>'}</div>${comparePair ? `<div class="scan-debug-details"><h3>С чем сравнивали crop</h3><div class="scan-debug-compare">${comparePair}</div></div>` : ''}${neighborCards ? `<div class="scan-debug-details"><h3>Похожие в индексе</h3><div class="scan-debug-neighbors">${neighborCards}</div></div>` : ''}`;
   const color = metrics.color || {};

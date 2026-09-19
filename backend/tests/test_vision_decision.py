@@ -39,6 +39,20 @@ class VisualDecisionTests(unittest.TestCase):
         self.assertEqual(result['wine']['slug'], 'a')
         self.assertEqual(result['recognition']['compared_with'][0]['slug'], 'a')
 
+    def test_compare_views_can_show_catalog_label_crop(self):
+        panel = Image.new('RGB', (80, 140), (12, 12, 14))
+        for x in range(18, 62):
+            for y in range(24, 122):
+                panel.putpixel((x, y), (236, 224, 196))
+        self.recognizer._load_catalog_image = Mock(return_value=panel)
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .9}]
+        result = self.recognizer.recognize(self.photo, include_candidates=True)
+        view = result['recognition']['compared_with'][0]
+        self.assertEqual(view['indexed_views'], ['full', 'crop'])
+        self.assertTrue(view['label_jpeg_base64'])
+        hidden = self.recognizer.recognize(self.photo)
+        self.assertIsNone(hidden['recognition']['compared_with'][0]['label_jpeg_base64'])
+
     def test_combined_mode_skips_ocr_by_default(self):
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .80}]
         result = self.recognizer.recognize(self.photo)
@@ -130,6 +144,19 @@ class ExtraGalleryTests(unittest.TestCase):
         ranked = best_by_slug(rows, limit=2)
         self.assertEqual([item['slug'] for item in ranked], ['a', 'b'])
         self.assertEqual(ranked[0]['score'], 0.94)
+
+    def test_split_full_crop_scores_bottle_and_label(self):
+        import hashlib
+        from app.vision import split_full_crop
+        bottle = 'abc123'
+        label = hashlib.sha256(b'crop:abc123').hexdigest()
+        full, crop, winner = split_full_crop([
+            {'image_hash': bottle, 'score': 0.71},
+            {'image_hash': label, 'score': 0.88},
+        ])
+        self.assertEqual(full, 0.71)
+        self.assertEqual(crop, 0.88)
+        self.assertEqual(winner, 'crop')
 
 
 class RerankTests(unittest.TestCase):

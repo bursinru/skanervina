@@ -177,7 +177,7 @@ async def recognize(request: Request, response: Response, image: UploadFile = Fi
         raise HTTPException(422, 'Unsupported recognition mode')
     if mode != 'combined' and (not expected or not token) and not debug_request:
         raise HTTPException(403, 'Administrator token required for benchmark modes')
-    include_candidates = request.headers.get('X-Scanner-Benchmark') == '1'
+    include_candidates = is_debug_request(request) or request.headers.get('X-Scanner-Benchmark') == '1'
     if include_candidates and (not expected or not token) and not debug_request:
         raise HTTPException(403, 'Administrator token required for benchmark metrics')
     ocr_enabled = None

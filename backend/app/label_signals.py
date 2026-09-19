@@ -129,6 +129,9 @@ def blend_candidates(
                 "color_delta": round(color, 4),
                 "ocr_delta": round(ocr, 4),
                 "image_hash": item.get("image_hash"),
+                "full_score": item.get("full_score"),
+                "crop_score": item.get("crop_score"),
+                "best_view": item.get("best_view"),
             }
         )
     blended.sort(key=lambda row: row["score"], reverse=True)
