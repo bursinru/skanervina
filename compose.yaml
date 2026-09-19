@@ -31,6 +31,7 @@ services:
       SCANNER_ADMIN_TOKEN: ${SCANNER_ADMIN_TOKEN:-}
     volumes:
       - ./Датасет:/catalog:ro
+      - ./backend/migrations:/app/migrations:ro
       - ./public:/app/public:ro
       - ./backend/app:/app/app:ro
       - model-cache:/models

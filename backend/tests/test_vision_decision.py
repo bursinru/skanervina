@@ -101,3 +101,17 @@ class VisualDecisionTests(unittest.TestCase):
             result = self.recognizer.recognize(self.photo)
         self.assertEqual(result['status'], 'unknown')
         self.assertNotIn('wine', result)
+
+
+class ExtraGalleryTests(unittest.TestCase):
+    def test_best_by_slug_keeps_highest_score(self):
+        from app.vision import best_by_slug
+        rows = [
+            {'slug': 'a', 'score': 0.81},
+            {'slug': 'a', 'score': 0.94},
+            {'slug': 'b', 'score': 0.90},
+            {'slug': 'c', 'score': 0.70},
+        ]
+        ranked = best_by_slug(rows, limit=2)
+        self.assertEqual([item['slug'] for item in ranked], ['a', 'b'])
+        self.assertEqual(ranked[0]['score'], 0.94)

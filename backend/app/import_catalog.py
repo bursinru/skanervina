@@ -9,6 +9,38 @@ from psycopg.types.json import Jsonb
 from .catalog import WineCatalog
 from .database import connect, migrate
 from .settings import settings
+from .label_detection import crop_label, detect_label
+
+EXTRA_SUFFIXES = {'.jpg', '.jpeg', '.png', '.webp'}
+CROP_AREA_MAX = 0.92
+
+EXTRA_SUFFIXES = {'.jpg', '.jpeg', '.png', '.webp'}
+
+
+def extra_files(root: Path, slug: str) -> list:
+    folder = (root / slug).resolve()
+    if not root.exists() or not folder.is_dir() or not folder.is_relative_to(root.resolve()):
+        return []
+    return sorted(
+        path for path in folder.iterdir()
+        if path.is_file() and path.suffix.lower() in EXTRA_SUFFIXES
+    )
+
+
+def crop_view_digest(file_digest: str) -> str:
+    return hashlib.sha256(f'crop:{file_digest}'.encode()).hexdigest()
+
+
+def label_crop_if_useful(image: Image.Image):
+    detection = detect_label(image)
+    left, top, right, bottom = detection.bbox
+    area = (right - left) * (bottom - top)
+    if area >= CROP_AREA_MAX:
+        return None
+    cropped = crop_label(image, detection)
+    if cropped.width < 32 or cropped.height < 32:
+        return None
+    return cropped
 
 
 def load_catalog(path):
@@ -45,6 +77,10 @@ def main():
     parser.add_argument('--catalog', type=Path, default=settings.catalog_csv)
     parser.add_argument('--images', type=Path)
     parser.add_argument('--index', action='store_true')
+    parser.add_argument('--extra-images', type=Path)
+    parser.add_argument('--only-slug', type=str)
+    parser.add_argument('--crops', action='store_true', default=True)
+    parser.add_argument('--no-crops', action='store_false', dest='crops')
     parser.add_argument('--batch-size', type=int, default=16)
     args = parser.parse_args()
     if not 1 <= args.batch_size <= 64:
@@ -52,51 +88,71 @@ def main():
     migrate()
     catalog = load_catalog(args.catalog)
     wines = list(catalog._wines.values())
-    with connect() as db:
-        for wine in wines:
-            db.execute('DELETE FROM wine_embeddings WHERE slug = %s AND EXISTS (SELECT 1 FROM wines WHERE slug = %s AND image_name <> %s)', (wine.slug, wine.slug, wine.image_name))
-            db.execute('INSERT INTO wines (slug, card, image_name) VALUES (%s,%s,%s) ON CONFLICT (slug) DO UPDATE SET card=excluded.card, image_name=excluded.image_name',
-                       (wine.slug, Jsonb(wine.to_card()), wine.image_name))
-    print(json.dumps({'imported': len(wines)}), flush=True)
+    if args.only_slug:
+        wine = catalog.get(args.only_slug)
+        if not wine:
+            raise ValueError(f'Unknown slug: {args.only_slug}')
+        wines = [wine]
+    if not args.only_slug:
+        with connect() as db:
+            for wine in wines:
+                db.execute('INSERT INTO wines (slug, card, image_name) VALUES (%s,%s,%s) ON CONFLICT (slug) DO UPDATE SET card=excluded.card, image_name=excluded.image_name',
+                           (wine.slug, Jsonb(wine.to_card()), wine.image_name))
+        print(json.dumps({'imported': len(wines)}), flush=True)
     if not args.index:
         return
-    if not args.images or not args.images.is_dir():
+    extra_root = args.extra_images.resolve() if args.extra_images else None
+    if extra_root and not extra_root.is_dir():
+        raise ValueError('--extra-images must be a directory')
+    if not extra_root and (not args.images or not args.images.is_dir()):
         raise ValueError('--images must point to the local catalog uploads directory')
     from .vision import ImageEncoder, MODEL_ID
     encoder = ImageEncoder()
     pending, skipped, missing = [], 0, []
-    root = args.images.resolve()
+    root = args.images.resolve() if args.images and args.images.is_dir() else extra_root
     with connect() as db:
-        existing = {r['slug']: r for r in db.execute('SELECT slug, image_hash, model FROM wine_embeddings')}
+        existing = {(r['slug'], r['image_hash']): r for r in db.execute('SELECT slug, image_hash, model FROM wine_embeddings')}
     for wine in wines:
-        # Strapi stores hashed upload filenames; CSV often contains the original display name.
-        # Optional extra reference: uploads/<slug>.* is preferred over the CDN filename.
         filename = unquote(Path(urlparse(wine.direct_image_url or '').path).name) or wine.image_name
         files = []
-        primary = (root / filename).resolve()
-        if primary.is_relative_to(root) and primary.is_file():
-            files.append(primary)
-        for extra in sorted(root.glob(f'{wine.slug}.*')):
-            extra = extra.resolve()
-            if extra.is_relative_to(root) and extra.is_file() and extra not in files:
-                files.append(extra)
+        if args.images and args.images.is_dir():
+            primary = (root / filename).resolve()
+            if primary.is_relative_to(root) and primary.is_file():
+                files.append(primary)
+            for extra in sorted(root.glob(f'{wine.slug}.*')):
+                extra = extra.resolve()
+                if extra.is_relative_to(root) and extra.is_file() and extra not in files:
+                    files.append(extra)
+        if extra_root:
+            files.extend(path for path in extra_files(extra_root, wine.slug) if path not in files)
         if not files:
             missing.append(wine.slug)
             continue
-        path = files[-1]
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        previous = existing.get(wine.slug, {})
-        if previous.get('image_hash') == digest and previous.get('model') == MODEL_ID:
-            skipped += 1
-            continue
-        pending.append((wine.slug, path, digest))
+        for path in files:
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            views = [('full', digest)]
+            if args.crops:
+                views.append(('crop', crop_view_digest(digest)))
+            for kind, view_digest in views:
+                previous = existing.get((wine.slug, view_digest), {})
+                if previous.get('model') == MODEL_ID:
+                    skipped += 1
+                    continue
+                pending.append((wine.slug, path, view_digest, kind))
     processed, failed = 0, []
     for offset in range(0, len(pending), args.batch_size):
         batch, images = [], []
         for item in pending[offset:offset + args.batch_size]:
             try:
                 with Image.open(item[1]) as im:
-                    images.append(ImageOps.exif_transpose(im).convert('RGB').resize((224, 224), Image.Resampling.BILINEAR))
+                    rgb = ImageOps.exif_transpose(im).convert('RGB')
+                if item[3] == 'crop':
+                    cropped = label_crop_if_useful(rgb)
+                    if cropped is None:
+                        skipped += 1
+                        continue
+                    rgb = cropped
+                images.append(rgb)
                 batch.append(item)
             except Exception:
                 failed.append(item[0])
@@ -104,9 +160,9 @@ def main():
             continue
         vectors = encoder.encode(images)
         with connect() as db:
-            for (slug, _, digest), vector in zip(batch, vectors):
+            for (slug, _, digest, _), vector in zip(batch, vectors):
                 db.execute('''INSERT INTO wine_embeddings (slug, model, image_hash, embedding) VALUES (%s,%s,%s,%s::vector)
-                    ON CONFLICT (slug) DO UPDATE SET model=excluded.model, image_hash=excluded.image_hash, embedding=excluded.embedding, updated_at=now()''',
+                    ON CONFLICT (slug, image_hash) DO UPDATE SET model=excluded.model, embedding=excluded.embedding, updated_at=now()''',
                            (slug, MODEL_ID, digest, str(vector)))
         processed += len(batch)
         print(json.dumps({'indexed': processed, 'remaining': len(pending) - offset - len(batch)}), flush=True)

@@ -7,6 +7,15 @@ MODEL_ID = 'google/siglip2-base-patch16-224'
 MODEL_REVISION = '75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2'
 
 
+def best_by_slug(rows, limit=5):
+    best = {}
+    for row in rows:
+        slug = row['slug']
+        if slug not in best or row['score'] > best[slug]['score']:
+            best[slug] = row
+    return sorted(best.values(), key=lambda item: item['score'], reverse=True)[:limit]
+
+
 class ImageEncoder:
     def __init__(self):
         import torch
@@ -42,5 +51,5 @@ class VisualSearch:
                 SELECT slug, 1 - (embedding <=> %s::vector) AS score
                 FROM wine_embeddings WHERE model = %s
                 ORDER BY embedding <=> %s::vector LIMIT %s
-            ''', (str(vector), MODEL_ID, str(vector), limit)).fetchall()
-        return rows
+            ''', (str(vector), MODEL_ID, str(vector), max(limit * 8, 16))).fetchall()
+        return best_by_slug(rows, limit)

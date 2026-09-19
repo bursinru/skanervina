@@ -528,10 +528,13 @@ function wineSlugFromPath() {
   if (!match) return '';
   try { return decodeURIComponent(match[1]); } catch { return ''; }
 }
-function setScannerUrl(slug, { replace = false } = {}) {
+function scannerHref(slug) {
   const url = new URL(location.href);
   url.pathname = slug ? `/scanner/${encodeURIComponent(slug)}` : '/scanner';
-  const next = `${url.pathname}${url.search}`;
+  return `${url.pathname}${url.search}`;
+}
+function setScannerUrl(slug, { replace = false } = {}) {
+  const next = scannerHref(slug);
   if (next === `${location.pathname}${location.search}`) return;
   history[replace ? 'replaceState' : 'pushState']({ scannerSlug: slug || '' }, '', next);
 }
@@ -684,7 +687,7 @@ async function openWineFromSlug(slug, { skipUrl = true } = {}) {
 }
 function wineMiniCard(item) {
   const slug = item.slug || '';
-  const href = slug ? `/scanner/${encodeURIComponent(slug)}` : '/scanner';
+  const href = scannerHref(slug);
   const image = resolveImageUrl(item.image_url, item.photo_name || item.image_name);
   const score = formatScorePct(item.label_score);
   return `<a class="alt-card" href="${escape(href)}" data-open-slug="${escape(slug)}">${image ? `<img src="${escape(image)}" alt="" loading="lazy">` : '<span class="dish-placeholder">Нет фото</span>'}<div><small>${escape(item.winery || '')}</small><strong>${escape(item.name || '')}</strong><em>${escape([item.category, item.region].filter(Boolean).join(' · '))}</em></div>${score ? `<span class="alt-card-score" aria-label="Сходство этикетки ${escape(score)}">${escape(score)}</span>` : ''}</a>`;
