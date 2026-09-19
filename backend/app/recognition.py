@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .catalog import WineCatalog, normalize
 from .label_detection import crop_label, detect_label, enhance_label
+from .label_signals import blend_candidates, crop_color_features
 from .ranking import ranking_metrics
 from .recommend import alternatives as recommend_alternatives
 from .settings import Settings
@@ -90,6 +91,16 @@ class Recognizer:
         output = BytesIO()
         image.save(output, format="JPEG", quality=94, optimize=True)
         return output.getvalue()
+
+    @staticmethod
+    def _preview_jpeg(image, max_side: int = 360) -> str:
+        import base64
+
+        preview = image.convert("RGB")
+        preview.thumbnail((max_side, max_side))
+        output = BytesIO()
+        preview.save(output, format="JPEG", quality=62, optimize=True)
+        return base64.b64encode(output.getvalue()).decode("ascii")
 
     @staticmethod
     def _mode_kind(mode: str) -> str:
@@ -183,33 +194,45 @@ class Recognizer:
 
         if self.visual:
             visual_started = perf_counter()
-            candidates = self.visual.search(work_image)
+            candidates = self.visual.search(work_image, limit=8)
             visual_ms = (perf_counter() - visual_started) * 1000
             if not candidates:
                 metrics = base_metrics("siglip2+pgvector")
                 metrics["reason"] = "index_empty"
                 metrics["timings_ms"]["visual"] = round(visual_ms, 1)
                 return {'status': 'unknown', 'recognition': metrics}
-            # Similarity is not a calibrated probability. Require separation from the runner-up.
-            best = candidates[0]
-            margin = best['score'] - candidates[1]['score'] if len(candidates) > 1 else 0
-            wine = self.catalog.get(best['slug'])
+            color_features = crop_color_features(work_image)
             threshold = float(os.getenv('CV_MATCH_THRESHOLD', '0.75'))
             min_margin = float(os.getenv('CV_MATCH_MARGIN', '0.04'))
             text, ocr_status, text_matches, ocr_ms = "", "skipped", [], 0.0
-            corroborated = False
             ocr_enabled = os.getenv('CV_OCR_ENABLED', 'false').lower() == 'true'
             if mode == "combined" and ocr_enabled:
                 ocr_started = perf_counter()
                 text, ocr_status = self._ocr(self._image_bytes(work_image), psm=6)
                 ocr_ms = (perf_counter() - ocr_started) * 1000
                 text_matches = self._text_matches(text)
-                corroborated = bool(text_matches and text_matches[0].wine.slug == best['slug'] and text_matches[0].score >= self.MATCH_THRESHOLD and self._text_evidence(text_matches[0]))
+            ranked = blend_candidates(candidates, self.catalog, color_features, text, ocr_enabled)
+            best = ranked[0]
+            margin = best['score'] - ranked[1]['score'] if len(ranked) > 1 else 0
+            wine = self.catalog.get(best['slug'])
+            corroborated = bool(
+                ocr_enabled
+                and text_matches
+                and wine
+                and text_matches[0].wine.slug == best['slug']
+                and text_matches[0].score >= self.MATCH_THRESHOLD
+                and self._text_evidence(text_matches[0])
+            )
             matched = wine and best['score'] >= threshold and (margin >= min_margin or corroborated)
             method = "siglip2+pgvector+ocr" if (mode == "combined" and ocr_enabled) else "siglip2+pgvector"
             metrics = base_metrics(method)
             metrics.update(
                 similarity=round(best['score'], 4),
+                siglip=best.get('siglip'),
+                color_delta=best.get('color_delta'),
+                ocr_delta=best.get('ocr_delta'),
+                color=color_features,
+                crop_jpeg_base64=self._preview_jpeg(work_image),
                 margin=round(margin, 4),
                 ocr=ocr_status,
                 ocr_characters=len(text),
@@ -219,12 +242,22 @@ class Recognizer:
                 threshold=threshold,
                 min_margin=min_margin,
             )
-            ranking = ranking_metrics(candidates)
+            ranking = ranking_metrics(ranked)
+            ranking["top5"] = [
+                {
+                    "slug": item["slug"],
+                    "score": round(item["score"], 4),
+                    "siglip": item.get("siglip"),
+                    "color_delta": item.get("color_delta"),
+                    "ocr_delta": item.get("ocr_delta"),
+                }
+                for item in ranked[:5]
+            ]
             metrics["candidates"] = ranking["top5"]
             metrics["timings_ms"].update(visual=round(visual_ms, 1), ocr=round(ocr_ms, 1))
             status = 'matched' if matched else ('uncertain' if best['score'] >= 0.65 else 'unknown')
             lookalike_items = [
-                item for item in candidates
+                item for item in ranked
                 if not (status == 'matched' and wine and item['slug'] == wine.slug)
             ]
             result = {

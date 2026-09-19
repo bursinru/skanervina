@@ -23,7 +23,7 @@ services:
       STATIC_DIR: /app/public
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       CV_ENABLED: "true"
-      CV_OCR_ENABLED: "false"
+      CV_OCR_ENABLED: "true"
       HF_HOME: /models
       CV_DEVICE: cpu
       CV_MATCH_THRESHOLD: "0.75"

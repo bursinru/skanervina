@@ -63,7 +63,7 @@ app.add_middleware(
     allow_origins=list(settings.cors_origins),
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+            allow_headers=["Content-Type", "X-Scanner-Debug", "X-Scanner-Admin", "X-Scanner-Mode", "X-Scanner-Benchmark"],
 )
 
 catalog: Optional[WineCatalog] = None
@@ -194,10 +194,21 @@ async def recognize(request: Request, response: Response, image: UploadFile = Fi
     result = await recognize_upload(image, mode, include_candidates)
     response.headers['Cache-Control'] = 'no-store'
     if not token and not debug_request:
-        result = {**result, 'confidence': None, 'recognition': {
-            key: value for key, value in result.get('recognition', {}).items()
-            if key in ('method', 'reason', 'similarity', 'threshold', 'min_margin')
-        }}
+        ranking = dict(result.get('ranking') or {})
+        ranking['top5'] = [
+            {'slug': item.get('slug'), 'score': item.get('score')}
+            for item in ranking.get('top5') or []
+            if item.get('slug')
+        ]
+        result = {
+            **result,
+            'confidence': None,
+            'ranking': ranking,
+            'recognition': {
+                key: value for key, value in result.get('recognition', {}).items()
+                if key in ('method', 'reason', 'similarity', 'threshold', 'min_margin')
+            },
+        }
     return result
 
 

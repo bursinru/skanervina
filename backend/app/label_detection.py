@@ -20,7 +20,7 @@ NormalizedBox = Tuple[float, float, float, float]
 class LabelDetection:
     bbox: NormalizedBox
     confidence: float
-    method: str = "central_panel"
+    method: str = "label_panel"
 
 
 def _integral(values: np.ndarray) -> np.ndarray:
@@ -85,13 +85,38 @@ def _candidate_score(
     center_distance = ((center_x - 0.5) ** 2 + (center_y - 0.52) ** 2) ** 0.5
     centrality = max(0.0, 1.0 - center_distance / 0.55)
 
-    # Boundary evidence is the strongest signal; interior texture is useful
-    # for text-heavy labels but deliberately has a low weight.
+    width_frac = width / edge.shape[1]
+    height_frac = height / edge.shape[0]
+    area = width_frac * height_frac
+    aspect = height_frac / max(width_frac, 1e-6)
+    # Front labels are portrait paper, not a landscape laptop screen.
+    if 1.05 <= aspect <= 2.55:
+        aspect_score = 1.0
+    elif 0.78 <= aspect < 1.05:
+        aspect_score = 0.72
+    elif aspect < 0.62:
+        aspect_score = 0.08
+    else:
+        aspect_score = 0.4
+    if 0.07 <= area <= 0.38:
+        area_score = 1.0
+    elif area <= 0.52:
+        area_score = 0.55
+    elif area >= 0.68:
+        area_score = 0.05
+    else:
+        area_score = 0.28
+    # Cream/white paper sits in a mid-bright band; blown UI or black bezels lose.
+    paper = 1.0 - min(1.0, abs(inside_mean - 0.62) / 0.62)
+
     score = (
-        min(1.0, border * 3.1) * 0.46
-        + contrast * 0.27
-        + min(1.0, interior_edge * 3.0) * 0.12
-        + centrality * 0.15
+        min(1.0, border * 3.1) * 0.34
+        + contrast * 0.18
+        + min(1.0, interior_edge * 3.0) * 0.08
+        + centrality * 0.10
+        + aspect_score * 0.16
+        + area_score * 0.10
+        + paper * 0.04
     )
     return float(score)
 
@@ -118,14 +143,14 @@ def detect_label(image: Image.Image) -> LabelDetection:
 
     # The grid is intentionally small: this runs before both visual retrieval
     # and OCR and should add only a few milliseconds on a phone photo.
-    widths = (0.42, 0.52, 0.62, 0.72)
-    heights = (0.38, 0.48, 0.58, 0.68)
-    centres_x = (0.35, 0.50, 0.65)
+    widths = (0.22, 0.30, 0.38, 0.48, 0.58, 0.70)
+    heights = (0.30, 0.40, 0.50, 0.60, 0.72)
+    centres_x = (0.32, 0.42, 0.50, 0.58, 0.68)
     # The front label is normally in the middle half of a bottle photo.  Do
     # not let a shelf rail or the table below the bottle win on edge density.
-    centres_y = (0.38, 0.50, 0.58)
+    centres_y = (0.30, 0.40, 0.50, 0.58, 0.66)
     best_score = -1.0
-    best_box = (0.14, 0.16, 0.86, 0.86)
+    best_box = (0.28, 0.22, 0.72, 0.78)
     for box_width in widths:
         for box_height in heights:
             for centre_x in centres_x:
@@ -134,7 +159,7 @@ def detect_label(image: Image.Image) -> LabelDetection:
                     top = max(0, round((centre_y - box_height / 2) * height))
                     right = min(width, round((centre_x + box_width / 2) * width))
                     bottom = min(height, round((centre_y + box_height / 2) * height))
-                    if right - left < width * 0.3 or bottom - top < height * 0.3:
+                    if right - left < width * 0.16 or bottom - top < height * 0.22:
                         continue
                     score = _candidate_score(
                         edge, gray_integral, edge_integral, left, top, right, bottom
@@ -143,10 +168,32 @@ def detect_label(image: Image.Image) -> LabelDetection:
                         best_score = score
                         best_box = (left / width, top / height, right / width, bottom / height)
 
+    # Prefer a tighter nested box when the paper panel is smaller than the first hit.
+    left, top, right, bottom = best_box
+    for shrink in (0.12, 0.22):
+        inner = (
+            left + (right - left) * shrink,
+            top + (bottom - top) * shrink,
+            right - (right - left) * shrink,
+            bottom - (bottom - top) * shrink,
+        )
+        pixel = (
+            max(0, round(inner[0] * width)),
+            max(0, round(inner[1] * height)),
+            min(width, round(inner[2] * width)),
+            min(height, round(inner[3] * height)),
+        )
+        if pixel[2] - pixel[0] < width * 0.16 or pixel[3] - pixel[1] < height * 0.22:
+            continue
+        score = _candidate_score(edge, gray_integral, edge_integral, *pixel)
+        if score > best_score + 0.015:
+            best_score = score
+            best_box = (pixel[0] / width, pixel[1] / height, pixel[2] / width, pixel[3] / height)
+
     # Add margin so small text at the edge of a label is not clipped.
     left, top, right, bottom = best_box
-    pad_x = max(0.035, (right - left) * 0.08)
-    pad_y = max(0.035, (bottom - top) * 0.08)
+    pad_x = max(0.02, (right - left) * 0.06)
+    pad_y = max(0.02, (bottom - top) * 0.06)
     result = (
         max(0.0, left - pad_x),
         max(0.0, top - pad_y),

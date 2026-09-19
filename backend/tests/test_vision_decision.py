@@ -115,3 +115,52 @@ class ExtraGalleryTests(unittest.TestCase):
         ranked = best_by_slug(rows, limit=2)
         self.assertEqual([item['slug'] for item in ranked], ['a', 'b'])
         self.assertEqual(ranked[0]['score'], 0.94)
+
+
+class RerankTests(unittest.TestCase):
+    def setUp(self):
+        self.catalog = WineCatalog.from_rows([
+            {
+                'Slug': 'white',
+                'Название вина': 'Шардоне',
+                'Винодельня': 'Скалистый берег',
+                'svoe_vino_color': 'Белое сухое',
+            },
+            {
+                'Slug': 'red',
+                'Название вина': 'Каберне Фран',
+                'Винодельня': 'Скалистый берег',
+                'svoe_vino_color': 'Красное сухое',
+            },
+        ], 'https://example.com/')
+        with patch.dict(os.environ, {'CV_ENABLED': 'false', 'CV_OCR_ENABLED': 'false'}):
+            self.recognizer = Recognizer(self.catalog, settings)
+        self.recognizer.visual = Mock()
+        self.recognizer._ocr = Mock(return_value=('', 'ok'))
+        output = BytesIO()
+        Image.new('RGB', (80, 120), (240, 228, 200)).save(output, format='PNG')
+        self.photo = output.getvalue()
+
+    def test_label_color_adds_percentage_points(self):
+        self.recognizer.visual.search.return_value = [
+            {'slug': 'red', 'score': 0.783},
+            {'slug': 'white', 'score': 0.782},
+        ]
+        result = self.recognizer.recognize(self.photo)
+        self.assertEqual(result['slug'], 'white')
+        self.assertGreater(result['recognition']['color_delta'], 0)
+        self.assertEqual(result['ranking']['top5'][1]['slug'], 'red')
+        self.assertLess(result['ranking']['top5'][1]['color_delta'], 0)
+
+    def test_ocr_adds_percentage_points_when_enabled(self):
+        self.recognizer.visual.search.return_value = [
+            {'slug': 'red', 'score': 0.80},
+            {'slug': 'white', 'score': 0.79},
+        ]
+        self.recognizer._ocr.return_value = ('Скалистый берег Шардоне', 'ok')
+        with patch.dict(os.environ, {'CV_OCR_ENABLED': 'true'}):
+            result = self.recognizer.recognize(self.photo)
+        self.assertEqual(result['slug'], 'white')
+        self.assertGreater(result['recognition']['ocr_delta'], 0)
+        self.assertGreater(result['recognition']['ocr_delta'], result['ranking']['top5'][1]['ocr_delta'])
+        self.assertEqual(result['recognition']['method'], 'siglip2+pgvector+ocr')

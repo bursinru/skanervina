@@ -418,12 +418,28 @@ function startProcessingLog() {
   processingTimer = setInterval(updateProcessingElapsed, 100);
   addProcessingLog('Фото принято');
   addProcessingLog('Запрос отправлен в распознавание');
-  addProcessingLog('Сервер выполняет автоматический crop и поиск по изображению');
+  addProcessingLog('Сервер ищет этикетку, вырезает crop, затем SigLIP, цвет и OCR');
 }
 function stopProcessingLog() {
   clearInterval(processingTimer);
   processingTimer = null;
   updateProcessingElapsed();
+}
+function formatPoints(delta) {
+  const value = Number(delta);
+  if (!Number.isFinite(value)) return '—';
+  const points = value * 100;
+  const sign = points > 0 ? '+' : '';
+  return `${sign}${points.toFixed(1).replace('.', ',')} п.п.`;
+}
+function cropBoxStyle(bbox) {
+  if (!Array.isArray(bbox) || bbox.length < 4) return '';
+  const left = Math.max(0, Number(bbox[0]) * 100);
+  const top = Math.max(0, Number(bbox[1]) * 100);
+  const width = Math.max(0, (Number(bbox[2]) - Number(bbox[0])) * 100);
+  const height = Math.max(0, (Number(bbox[3]) - Number(bbox[1])) * 100);
+  if (![left, top, width, height].every(Number.isFinite)) return '';
+  return `left:${left}%;top:${top}%;width:${width}%;height:${height}%`;
 }
 function renderScanDebug({ result, elapsed }) {
   if (!debugMode) return '';
@@ -446,19 +462,29 @@ function renderScanDebug({ result, elapsed }) {
   const backendOther = Number.isFinite(serverTotal) ? Math.max(0, serverTotal - measuredTotal) : null;
   const browserOther = Number.isFinite(serverTotal) ? Math.max(0, elapsed - serverTotal) : null;
   const status = result?.status === 'matched' ? 'Найдено' : result?.status === 'uncertain' ? 'Нужно проверить' : 'Не найдено';
-  const scoreNote = similarity === null ? 'метрика недоступна' : 'сходство, не вероятность';
+  const scoreNote = similarity === null ? 'метрика недоступна' : 'итого после SigLIP + цвет + OCR';
+  const bbox = metrics.label_detection?.bbox;
+  const boxStyle = cropBoxStyle(bbox);
+  const cropSrc = metrics.crop_jpeg_base64 ? `data:image/jpeg;base64,${metrics.crop_jpeg_base64}` : '';
+  const color = metrics.color || {};
+  const paper = color.paper === 'cream' ? 'кремовая/светлая бумага' : color.paper === 'dark' ? 'тёмная бумага' : color.paper === 'mixed' ? 'смешанный тон' : 'не определён';
+  const bottle = color.bottle_tone === 'red' ? 'красное' : color.bottle_tone === 'white' ? 'белое/светлое' : color.bottle_tone === 'rose' ? 'розовое' : 'не виден';
+  const ocrOn = metrics.ocr && metrics.ocr !== 'skipped';
+  const cropMarkup = `<div class="scan-debug-crop">${photoUrl && boxStyle ? `<figure><div class="crop-source"><img src="${escape(photoUrl)}" alt="Исходное фото"><span class="crop-box" style="${boxStyle}"></span></div><figcaption>Красная рамка — область, которую вырезает детектор</figcaption></figure>` : ''}${cropSrc ? `<figure><img class="crop-sent" src="${escape(cropSrc)}" alt="Crop, отправленный в поиск"><figcaption>Это ушло в SigLIP и OCR</figcaption></figure>` : ''}</div>`;
+  const contribMarkup = `<div class="scan-debug-contrib"><div><small>SIGLIP</small><strong>${Number.isFinite(metrics.siglip) ? `${(metrics.siglip * 100).toFixed(1).replace('.', ',')}%` : '—'}</strong><em>сходство картинки</em></div><div><small>ЦВЕТ ЭТИКЕТКИ</small><strong>${formatPoints(metrics.color_delta)}</strong><em>${paper} · тон: ${bottle}</em></div><div><small>OCR</small><strong>${ocrOn ? formatPoints(metrics.ocr_delta) : 'выкл'}</strong><em>${ocrOn ? (metrics.ocr_text ? `«${escape(String(metrics.ocr_text).slice(0, 80))}»` : 'текст не прочитан') : 'на этом запросе не запускался'}</em></div></div>`;
+  const rankingRows = (result?.ranking?.top5 || []).map((item, index) => `<div class="scan-debug-detail-row"><div><strong>${index + 1}. ${escape(item.slug || '')}</strong><small>SigLIP ${(Number(item.siglip) * 100).toFixed(1).replace('.', ',')}% · цвет ${formatPoints(item.color_delta)} · OCR ${formatPoints(item.ocr_delta)}</small></div><b>${Number.isFinite(item.score) ? `${(item.score * 100).toFixed(1).replace('.', ',')}%` : '—'}</b></div>`).join('');
   const detailRows = [
     ['Декодирование фото', timingValues.decode, 'открытие, EXIF и приведение к RGB'],
     ['Поиск этикетки', timingValues.labelDetection, 'автоматический поиск области для crop'],
     ['Вырезание crop', timingValues.labelCrop, 'вырезание найденной области'],
     ['Подготовка изображения', timingValues.enhancement, 'контраст/резкость для enhanced-режима'],
     ['Изображение', timingValues.visual, 'SigLIP-вектор + поиск ближайших в каталоге'],
-    ...(metrics.ocr && metrics.ocr !== 'skipped' ? [['OCR', timingValues.ocr, 'Tesseract и сопоставление распознанного текста']] : []),
+    ...(ocrOn ? [['OCR', timingValues.ocr, 'Tesseract и сопоставление распознанного текста']] : []),
     ['Остальное backend', backendOther, 'сборка ответа и операции, не выделенные отдельно'],
     ['Загрузка, сеть и браузер', browserOther, 'разница между полным ожиданием и backend'],
   ];
   const detailMarkup = detailRows.map(([label, value, note]) => `<div class="scan-debug-detail-row"><div><strong>${label}</strong><small>${note}</small></div><b>${timing(value)}</b></div>`).join('');
-  return `<section class="scan-debug" aria-label="Диагностика сканирования"><div class="scan-debug-heading"><div><small>DEBUG · РЕЗУЛЬТАТ СКАНИРОВАНИЯ</small><h2>Технические показатели</h2></div><span class="scan-debug-status">${escape(status)}</span></div><div class="scan-debug-metrics"><div><small>СОВПАДЕНИЕ</small><strong>${score}</strong><em>${scoreNote}</em></div><div><small>СКОРОСТЬ</small><strong>${formatElapsed(elapsed)}</strong><em>полное ожидание в браузере</em></div><div><small>СЕРВЕР</small><strong>${timing(serverTotal)}</strong><em>распознавание backend</em></div></div><div class="scan-debug-details"><h3>Разбивка времени</h3>${detailMarkup}</div><p class="scan-debug-footnote">Поиск идёт по изображению (SigLIP). OCR в обычном режиме выключен. Время «Загрузка, сеть и браузер» — расчётная разница, а не отдельный замер.</p></section>`;
+  return `<section class="scan-debug" aria-label="Диагностика сканирования"><div class="scan-debug-heading"><div><small>DEBUG · РЕЗУЛЬТАТ СКАНИРОВАНИЯ</small><h2>Технические показатели</h2></div><span class="scan-debug-status">${escape(status)}</span></div><div class="scan-debug-metrics"><div><small>ИТОГО</small><strong>${score}</strong><em>${scoreNote}</em></div><div><small>СКОРОСТЬ</small><strong>${formatElapsed(elapsed)}</strong><em>полное ожидание в браузере</em></div><div><small>СЕРВЕР</small><strong>${timing(serverTotal)}</strong><em>распознавание backend</em></div></div>${cropMarkup}${contribMarkup}${rankingRows ? `<div class="scan-debug-details"><h3>Вклад в топ-5</h3>${rankingRows}</div>` : ''}<div class="scan-debug-details"><h3>Разбивка времени</h3>${detailMarkup}</div><p class="scan-debug-footnote">Проценты — косинус SigLIP. «п.п.» у цвета и OCR — сколько пунктов добавили или сняли к этой оценке, не отдельная вероятность. Время «Загрузка, сеть и браузер» — расчётная разница.</p></section>`;
 }
 function showDiagnostics(result, elapsed) {
   if (!debugMode) return;
@@ -471,7 +497,9 @@ function showDiagnostics(result, elapsed) {
   const score = metrics.similarity;
   const lines = [
     `Статус: ${result.status}`,
-    `Сходство изображений: ${Number.isFinite(score) ? (score * 100).toFixed(1) + '%' : 'не измерено (OCR)'}`,
+    `Сходство итог: ${Number.isFinite(score) ? (score * 100).toFixed(1) + '%' : 'не измерено'}`,
+    `SigLIP: ${Number.isFinite(metrics.siglip) ? (metrics.siglip * 100).toFixed(1) + '%' : '—'} · цвет ${formatPoints(metrics.color_delta)} · OCR ${formatPoints(metrics.ocr_delta)}`,
+    `Цвет бумаги: ${metrics.color?.paper || '—'} · тон бутылки: ${metrics.color?.bottle_tone || '—'}`,
     'Сходство — косинусная оценка, не вероятность правильного ответа.',
     `Полное ожидание: ${(elapsed / 1000).toFixed(2)} с`,
     `Обработка на сервере: ${formatElapsed(serverTotal)}`,
