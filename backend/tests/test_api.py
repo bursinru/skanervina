@@ -56,6 +56,7 @@ class ApiTests(unittest.TestCase):
 
     def test_site_and_catalog(self):
         self.assertEqual(self.client.get('/scanner').status_code, 200)
+        self.assertEqual(self.client.get('/scanner/fanagoria-test').status_code, 200)
         self.assertIn('profileEndpoint', self.client.get('/config.js').text)
         self.assertGreater(self.client.get('/healthz').json()['catalog_size'], 0)
         items = self.client.get('/v1/search', params={'q': 'Фанагория Blanc de Blancs'}).json()['items']

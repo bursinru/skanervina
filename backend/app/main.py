@@ -296,7 +296,8 @@ def config():
 
 @app.get("/scanner")
 @app.get("/scanner/")
-def scanner():
+@app.get("/scanner/{slug}")
+def scanner(slug: Optional[str] = None):
     return FileResponse(PUBLIC / "index.html")
 
 

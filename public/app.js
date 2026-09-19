@@ -515,8 +515,21 @@ $('recognize').onclick = async () => {
   } finally { clearTimeout(timer); controller = null; stopProcessingLog(); $('processing').hidden = true; }
 };
 $('cancel-request').onclick = () => controller?.abort('user');
-function showWine(wine, scanMeta = null) {
+function wineSlugFromPath() {
+  const match = location.pathname.match(/^\/scanner\/([^/]+)\/?$/);
+  if (!match) return '';
+  try { return decodeURIComponent(match[1]); } catch { return ''; }
+}
+function setScannerUrl(slug, { replace = false } = {}) {
+  const url = new URL(location.href);
+  url.pathname = slug ? `/scanner/${encodeURIComponent(slug)}` : '/scanner';
+  const next = `${url.pathname}${url.search}`;
+  if (next === `${location.pathname}${location.search}`) return;
+  history[replace ? 'replaceState' : 'pushState']({ scannerSlug: slug || '' }, '', next);
+}
+function showWine(wine, scanMeta = null, options = {}) {
   stopCamera(); currentWine = wine; $('scanner-screen').hidden = true; $('result-screen').hidden = false;
+  if (!options.skipUrl && wine?.slug && !wine.demo) setScannerUrl(wine.slug);
   const image = resolveImageUrl(wine.image_url, wine.photo_name || wine.image_name || wine.photoName);
   const rating = formatRating(wine.public_rating);
   const dishes = Array.isArray(wine.dishes) ? wine.dishes.filter(Boolean) : [];
@@ -612,6 +625,7 @@ function showNotFound(result, elapsed) {
   stopCamera();
   currentWine = null;
   notice('');
+  setScannerUrl('');
   $('scanner-screen').hidden = true;
   $('result-screen').hidden = false;
   const lookalikes = withLabelScores(result.lookalikes, result).filter(item => item?.slug);
@@ -642,7 +656,24 @@ function showNotFound(result, elapsed) {
   window.scrollTo({ top:0, behavior:'instant' });
   if (debugMode) showDiagnostics(result, elapsed);
 }
-function backToScanner() { $('result-screen').hidden = true; $('scanner-screen').hidden = false; $('show-example')?.focus({ preventScroll:true }); window.scrollTo({ top:0, behavior:'instant' }); }
+function backToScanner(options = {}) {
+  $('result-screen').hidden = true;
+  $('scanner-screen').hidden = false;
+  if (!options.skipUrl) setScannerUrl('');
+  $('show-example')?.focus({ preventScroll:true });
+  window.scrollTo({ top:0, behavior:'instant' });
+}
+async function openWineFromSlug(slug, { skipUrl = true } = {}) {
+  try {
+    const response = await fetch(`/v1/catalog/${encodeURIComponent(slug)}`);
+    if (!response.ok) throw new Error('catalog');
+    const wine = await response.json();
+    showWine({ ...wine, demo: false }, null, { skipUrl });
+  } catch {
+    setScannerUrl('', { replace: true });
+    notice('Это вино не найдено в каталоге.');
+  }
+}
 function wineMiniCard(item) {
   const image = resolveImageUrl(item.image_url, item.photo_name || item.image_name);
   const score = formatScorePct(item.label_score);
@@ -788,3 +819,9 @@ $('catalog-search').onsubmit = async event => {
   } catch { if (active === searchRequest) $('search-status').textContent = 'Поиск недоступен. Попробуйте ещё раз.'; }
   finally { clearTimeout(timer); }
 };
+window.addEventListener('popstate', () => {
+  const slug = wineSlugFromPath();
+  if (slug) openWineFromSlug(slug);
+  else if (!$('result-screen').hidden) backToScanner({ skipUrl: true });
+});
+if (wineSlugFromPath()) openWineFromSlug(wineSlugFromPath());
