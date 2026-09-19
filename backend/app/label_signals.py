@@ -7,8 +7,9 @@ from PIL import Image
 
 from .catalog import CatalogWine, normalize, tokens
 
-COLOR_WEIGHT = 0.08
+COLOR_WEIGHT = 0.04
 OCR_WEIGHT = 0.12
+VISUAL_LOCK = 0.02
 OCR_STOP = {
     "вино",
     "вина",
@@ -35,10 +36,10 @@ OCR_STOP = {
 def wine_tone(wine: Optional[CatalogWine]) -> str:
     if wine is None:
         return "unknown"
-    blob = normalize(f"{wine.color} {wine.category}")
+    blob = normalize(f"{wine.color} {wine.category} {wine.name}")
     if "роз" in blob or "rose" in blob:
         return "rose"
-    if "оранж" in blob:
+    if "оранж" in blob or "orange" in blob:
         return "orange"
     if "красн" in blob or "red" in blob:
         return "red"
@@ -56,9 +57,24 @@ def crop_color_features(image: Image.Image) -> Dict[str, Any]:
     channel_min = np.minimum(np.minimum(red, green), blue)
     saturation = float((channel_max - channel_min).mean())
     paper = "cream" if brightness >= 0.55 and saturation < 0.28 else ("dark" if brightness < 0.32 else "mixed")
-    red_liquid = float(((red > 0.28) & (red > green + 0.07) & (red > blue + 0.07) & (brightness < 0.62)).mean())
+    luminance = pixels.mean(axis=2)
+    red_liquid = float(((red > 0.28) & (red > green + 0.12) & (red > blue + 0.15) & (green < 0.28) & (luminance < 0.48)).mean())
+    orange_liquid = float(
+        (
+            (red > 0.32)
+            & (green > 0.16)
+            & (red > blue + 0.06)
+            & (green >= blue * 0.85)
+            & ((red - green) < 0.28)
+            & (luminance < 0.58)
+        ).mean()
+    )
     pale_liquid = float(((brightness > 0.58) & (green + blue > red * 1.05) & (saturation < 0.35)).mean())
-    if red_liquid >= 0.08 and red_liquid > pale_liquid:
+    if paper == "cream" or (paper == "mixed" and brightness >= 0.52 and pale_liquid >= 0.12):
+        bottle_tone = "unknown"
+    elif orange_liquid >= 0.08 and orange_liquid >= red_liquid:
+        bottle_tone = "orange"
+    elif red_liquid >= 0.08 and red_liquid > pale_liquid:
         bottle_tone = "red"
     elif pale_liquid >= 0.18 and paper != "dark":
         bottle_tone = "white"
@@ -73,6 +89,7 @@ def crop_color_features(image: Image.Image) -> Dict[str, Any]:
         "bottle_tone": bottle_tone,
         "red_fraction": round(red_liquid, 4),
         "pale_fraction": round(pale_liquid, 4),
+        "orange_fraction": round(orange_liquid, 4),
     }
 
 
@@ -82,7 +99,7 @@ def color_delta(features: Mapping[str, Any], wine: Optional[CatalogWine]) -> flo
     paper = str(features.get("paper") or "mixed")
     if tone == "unknown":
         return 0.0
-    if bottle == tone or (bottle == "white" and tone == "orange"):
+    if bottle == tone or (bottle == "white" and tone == "orange") or (bottle == "orange" and tone == "white"):
         return COLOR_WEIGHT
     if bottle == "unknown":
         if paper == "cream" and tone in {"white", "orange", "rose"}:
@@ -90,9 +107,11 @@ def color_delta(features: Mapping[str, Any], wine: Optional[CatalogWine]) -> flo
         if paper == "dark" and tone == "red":
             return COLOR_WEIGHT * 0.2
         return 0.0
+    if tone == "orange" and bottle == "red":
+        return 0.0
     if {bottle, tone} == {"white", "rose"}:
         return 0.0
-    return -COLOR_WEIGHT
+    return 0.0
 
 
 def ocr_delta(text: str, wine: Optional[CatalogWine]) -> float:
@@ -104,6 +123,29 @@ def ocr_delta(text: str, wine: Optional[CatalogWine]) -> float:
         return 0.0
     overlap = len(useful & catalog) / min(8, len(useful))
     return round(min(OCR_WEIGHT, overlap * OCR_WEIGHT), 4)
+
+
+def _visual_score(item: Mapping[str, Any]) -> float:
+    crop = item.get("crop_score")
+    if crop is not None:
+        return float(crop)
+    return float(item.get("siglip") or item.get("score") or 0.0)
+
+
+def _lock_visual_leader(rows: list) -> list:
+    """Color may break ties; it must not bury a clear label/bottle leader."""
+
+    if len(rows) < 2:
+        return rows
+    leader = max(rows, key=_visual_score)
+    others = [row for row in rows if row.get("slug") != leader.get("slug")]
+    if not others:
+        return rows
+    runner = max(others, key=_visual_score)
+    if _visual_score(leader) < _visual_score(runner) + VISUAL_LOCK:
+        return rows
+    rest = sorted(others, key=lambda row: row["score"], reverse=True)
+    return [leader] + rest
 
 
 def blend_candidates(
@@ -135,4 +177,4 @@ def blend_candidates(
             }
         )
     blended.sort(key=lambda row: row["score"], reverse=True)
-    return blended
+    return _lock_visual_leader(blended)

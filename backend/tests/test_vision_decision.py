@@ -192,7 +192,7 @@ class RerankTests(unittest.TestCase):
         self.assertEqual(result['slug'], 'white')
         self.assertGreater(result['recognition']['color_delta'], 0)
         self.assertEqual(result['ranking']['top5'][1]['slug'], 'red')
-        self.assertLess(result['ranking']['top5'][1]['color_delta'], 0)
+        self.assertEqual(result['ranking']['top5'][1]['color_delta'], 0)
 
     def test_ocr_adds_percentage_points_when_enabled(self):
         self.recognizer.visual.search.return_value = [
