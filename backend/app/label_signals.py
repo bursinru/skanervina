@@ -128,6 +128,7 @@ def blend_candidates(
                 "siglip": round(siglip, 4),
                 "color_delta": round(color, 4),
                 "ocr_delta": round(ocr, 4),
+                "image_hash": item.get("image_hash"),
             }
         )
     blended.sort(key=lambda row: row["score"], reverse=True)

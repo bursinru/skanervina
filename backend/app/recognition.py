@@ -62,6 +62,9 @@ class Recognizer:
             return "", "binary_missing"
 
         try:
+            from .image_io import register_decoders
+
+            register_decoders()
             with Image.open(BytesIO(image_bytes)) as image:
                 image.load()
                 image = ImageOps.exif_transpose(image)
@@ -79,7 +82,9 @@ class Recognizer:
     @staticmethod
     def _decode_image(image_bytes: bytes):
         from PIL import Image, ImageOps
+        from .image_io import register_decoders
 
+        register_decoders()
         with Image.open(BytesIO(image_bytes)) as image:
             if image.width * image.height > 24_000_000:
                 return None, "image_dimensions_too_large"
@@ -110,13 +115,13 @@ class Recognizer:
             return "ocr"
         return "combined"
 
-    def recognize(self, image_bytes: bytes, mode: str = "combined", include_candidates: bool = False) -> Dict[str, Any]:
+    def recognize(self, image_bytes: bytes, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None) -> Dict[str, Any]:
         started = perf_counter()
-        result = self._recognize(image_bytes, mode, include_candidates)
+        result = self._recognize(image_bytes, mode, include_candidates, ocr_enabled)
         result.setdefault('recognition', {}).setdefault('timings_ms', {})['total'] = round((perf_counter() - started) * 1000, 1)
         return result
 
-    def _recognize(self, image_bytes: bytes, mode: str = "combined", include_candidates: bool = False) -> Dict[str, Any]:
+    def _recognize(self, image_bytes: bytes, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None) -> Dict[str, Any]:
         if mode not in self.MODES:
             return {
                 "status": "unknown",
@@ -204,8 +209,10 @@ class Recognizer:
             color_features = crop_color_features(work_image)
             threshold = float(os.getenv('CV_MATCH_THRESHOLD', '0.75'))
             min_margin = float(os.getenv('CV_MATCH_MARGIN', '0.04'))
+            clear_match = float(os.getenv('CV_CLEAR_MATCH', '0.85'))
             text, ocr_status, text_matches, ocr_ms = "", "skipped", [], 0.0
-            ocr_enabled = os.getenv('CV_OCR_ENABLED', 'false').lower() == 'true'
+            if ocr_enabled is None:
+                ocr_enabled = os.getenv('CV_OCR_ENABLED', 'false').lower() == 'true'
             if mode == "combined" and ocr_enabled:
                 ocr_started = perf_counter()
                 text, ocr_status = self._ocr(self._image_bytes(work_image), psm=6)
@@ -223,7 +230,9 @@ class Recognizer:
                 and text_matches[0].score >= self.MATCH_THRESHOLD
                 and self._text_evidence(text_matches[0])
             )
-            matched = wine and best['score'] >= threshold and (margin >= min_margin or corroborated)
+            matched = wine and best['score'] >= threshold and (
+                margin >= min_margin or corroborated or best['score'] >= clear_match
+            )
             method = "siglip2+pgvector+ocr" if (mode == "combined" and ocr_enabled) else "siglip2+pgvector"
             metrics = base_metrics(method)
             metrics.update(
@@ -233,23 +242,30 @@ class Recognizer:
                 ocr_delta=best.get('ocr_delta'),
                 color=color_features,
                 crop_jpeg_base64=self._preview_jpeg(work_image),
+                compared_with=self._compare_views(ranked[:2]),
                 margin=round(margin, 4),
                 ocr=ocr_status,
                 ocr_characters=len(text),
                 ocr_best={'slug': text_matches[0].wine.slug, 'score': round(text_matches[0].score, 4)} if text_matches else None,
                 ocr_corroborated=corroborated,
                 ocr_text=text[:500],
+                ocr_enabled=bool(ocr_enabled),
                 threshold=threshold,
                 min_margin=min_margin,
+                clear_match=clear_match,
             )
             ranking = ranking_metrics(ranked)
             ranking["top5"] = [
                 {
                     "slug": item["slug"],
+                    "name": (self.catalog.get(item["slug"]).name if self.catalog.get(item["slug"]) else item["slug"]),
+                    "winery": (self.catalog.get(item["slug"]).winery if self.catalog.get(item["slug"]) else ""),
                     "score": round(item["score"], 4),
                     "siglip": item.get("siglip"),
                     "color_delta": item.get("color_delta"),
                     "ocr_delta": item.get("ocr_delta"),
+                    "image_hash": item.get("image_hash"),
+                    "image_url": (self.catalog.get(item["slug"]).image_url if self.catalog.get(item["slug"]) else None),
                 }
                 for item in ranked[:5]
             ]
@@ -306,6 +322,25 @@ class Recognizer:
             if len(cards) >= limit:
                 break
         return cards
+
+    def _compare_views(self, items: Iterable[Any]) -> List[Dict[str, Any]]:
+        views: List[Dict[str, Any]] = []
+        for item in items:
+            wine = self.catalog.get(item.get("slug")) if isinstance(item, dict) else None
+            if not wine:
+                continue
+            views.append(
+                {
+                    "slug": wine.slug,
+                    "name": wine.name,
+                    "winery": wine.winery,
+                    "image_url": wine.image_url,
+                    "image_hash": item.get("image_hash"),
+                    "score": round(float(item.get("score") or 0), 4),
+                    "siglip": item.get("siglip"),
+                }
+            )
+        return views
 
     def _ocr_result(self, text, ocr_status, metrics, ocr_ms=0.0, include_candidates=False):
         metrics['ocr'] = ocr_status

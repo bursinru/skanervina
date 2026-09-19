@@ -48,7 +48,7 @@ class VisualSearch:
         vector = self.encoder.encode([image])[0]
         with connect() as db:
             rows = db.execute('''
-                SELECT slug, 1 - (embedding <=> %s::vector) AS score
+                SELECT slug, image_hash, 1 - (embedding <=> %s::vector) AS score
                 FROM wine_embeddings WHERE model = %s
                 ORDER BY embedding <=> %s::vector LIMIT %s
             ''', (str(vector), MODEL_ID, str(vector), max(limit * 8, 16))).fetchall()

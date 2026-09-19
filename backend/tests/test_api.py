@@ -51,6 +51,10 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.put('/v1/profile', json={'ratings': {'x': True}}, headers={'X-Scanner-Client': 'web'}).status_code, 422)
         self.assertEqual(self.client.put('/v1/profile', json={'ratings': {'x': 6}}, headers={'X-Scanner-Client': 'web'}).status_code, 422)
         self.assertEqual(self.client.post('/v1/recognize', files={'image': ('x.txt', b'test', 'text/plain')}).status_code, 415)
+        heic_header = (20).to_bytes(4, 'big') + b'ftypheic' + b'\x00\x00\x00\x00' + b'mif1'
+        heic = self.client.post('/v1/recognize', files={'image': ('IMG_0001.HEIC', heic_header, 'image/heic')})
+        self.assertEqual(heic.status_code, 200)
+        self.assertEqual(heic.json()['recognition']['reason'], 'invalid_image')
         result = self.client.post('/v1/recognize', files={'image': ('x.jpg', b'bad', 'image/jpeg')})
         self.assertEqual(result.json()['recognition']['reason'], 'invalid_image')
 

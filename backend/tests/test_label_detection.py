@@ -50,6 +50,34 @@ class LabelDetectionTests(unittest.TestCase):
         self.assertLess(right - left, 0.62)
         self.assertGreater(bottom - top, right - left)
 
+    def test_keeps_full_paper_instead_of_the_drawing(self):
+        image = Image.new("RGB", (400, 640), (10, 10, 12))
+        for x in range(132, 268):
+            for y in range(148, 508):
+                image.putpixel((x, y), (236, 224, 196))
+        for x in range(168, 244):
+            for y in range(318, 468):
+                image.putpixel((x, y), (36, 32, 28))
+        left, top, right, bottom = detect_label(image).bbox
+        self.assertLess(left, 0.30)
+        self.assertGreater(right, 0.70)
+        self.assertLess(top, 0.28)
+        self.assertGreater(bottom, 0.74)
+
+    def test_left_bottle_is_not_pulled_into_black_space(self):
+        image = Image.new("RGB", (640, 480), (6, 6, 8))
+        for x in range(70, 210):
+            for y in range(70, 410):
+                image.putpixel((x, y), (238, 228, 208))
+        for x in range(110, 175):
+            for y in range(210, 360):
+                image.putpixel((x, y), (32, 30, 26))
+        left, top, right, bottom = detect_label(image).bbox
+        self.assertLess(left, 0.16)
+        self.assertLess(right, 0.48)
+        self.assertGreater(right, 0.28)
+        self.assertGreater(bottom - top, right - left)
+
 
 if __name__ == "__main__":
     unittest.main()

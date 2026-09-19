@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, StrictInt
 from .limits import BodyLimitMiddleware
 
+from .image_io import is_allowed_upload
 from .catalog import WineCatalog
 from .ranking import best_slug
 from .recognition import Recognizer
@@ -63,7 +64,7 @@ app.add_middleware(
     allow_origins=list(settings.cors_origins),
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-            allow_headers=["Content-Type", "X-Scanner-Debug", "X-Scanner-Admin", "X-Scanner-Mode", "X-Scanner-Benchmark"],
+            allow_headers=["Content-Type", "X-Scanner-Debug", "X-Scanner-Admin", "X-Scanner-Mode", "X-Scanner-Benchmark", "X-Scanner-OCR"],
 )
 
 catalog: Optional[WineCatalog] = None
@@ -136,37 +137,25 @@ def require_service() -> Recognizer:
 inference_slots = asyncio.Semaphore(2)
 
 
-async def recognize_upload(image: UploadFile, mode: str = "combined", include_candidates: bool = False) -> Dict[str, Any]:
-    allowed_types = {"image/jpeg", "image/png", "image/webp", "image/jpg"}
+async def recognize_upload(image: UploadFile, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None) -> Dict[str, Any]:
     declared = (image.content_type or "").split(";")[0].strip().lower()
     data = await image.read(settings.max_image_bytes + 1)
     if len(data) > settings.max_image_bytes:
         raise HTTPException(status_code=413, detail="Image is larger than 15 MB.")
     if not data:
         raise HTTPException(status_code=400, detail="Image is empty.")
-    sniffed = None
-    if data[:3] == b"\xff\xd8\xff":
-        sniffed = "image/jpeg"
-    elif data.startswith(b"\x89PNG\r\n\x1a\n"):
-        sniffed = "image/png"
-    elif len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        sniffed = "image/webp"
-    if declared not in allowed_types and not (
-        sniffed and declared in {"", "application/octet-stream", "application/x-www-form-urlencoded"}
-    ):
+    if not is_allowed_upload(declared, data):
         raise HTTPException(
             status_code=415,
-            detail="Supported image types: JPG, PNG, WebP.",
+            detail="Supported image types: JPEG, PNG, WebP, HEIC/HEIF, AVIF.",
         )
-    if not sniffed and declared not in allowed_types:
-        raise HTTPException(status_code=415, detail="Supported image types: JPG, PNG, WebP.")
     service = require_service()
     try:
         await asyncio.wait_for(inference_slots.acquire(), timeout=0.1)
     except asyncio.TimeoutError:
         raise HTTPException(429, 'Recognition is busy; retry shortly')
     try:
-        return await run_in_threadpool(service.recognize, data, mode, include_candidates)
+        return await run_in_threadpool(service.recognize, data, mode, include_candidates, ocr_enabled)
     except Exception:
         import logging
         logging.exception('Recognition service failed')
@@ -191,7 +180,14 @@ async def recognize(request: Request, response: Response, image: UploadFile = Fi
     include_candidates = request.headers.get('X-Scanner-Benchmark') == '1'
     if include_candidates and (not expected or not token) and not debug_request:
         raise HTTPException(403, 'Administrator token required for benchmark metrics')
-    result = await recognize_upload(image, mode, include_candidates)
+    ocr_enabled = None
+    if debug_request or token:
+        raw_ocr = request.query_params.get('ocr')
+        if raw_ocr is None:
+            raw_ocr = request.headers.get('X-Scanner-OCR')
+        if raw_ocr is not None:
+            ocr_enabled = raw_ocr.strip().lower() in {'1', 'true', 'on', 'yes'}
+    result = await recognize_upload(image, mode, include_candidates, ocr_enabled)
     response.headers['Cache-Control'] = 'no-store'
     if not token and not debug_request:
         ranking = dict(result.get('ranking') or {})

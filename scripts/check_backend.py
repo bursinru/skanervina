@@ -34,7 +34,13 @@ with httpx.Client(base_url=args.url, timeout=60) as client:
         if not path.is_file():
             continue
         start = time.monotonic()
-        response = client.post('/v1/recognize', files={'image': (path.name, path.read_bytes(), mimetypes.guess_type(path.name)[0])})
+        mime = mimetypes.guess_type(path.name)[0]
+        suffix = path.suffix.lower()
+        if suffix in {'.heic', '.heif'}:
+            mime = 'image/heic'
+        elif suffix == '.avif':
+            mime = 'image/avif'
+        response = client.post('/v1/recognize', files={'image': (path.name, path.read_bytes(), mime or 'application/octet-stream')})
         response.raise_for_status()
         report['queries'].append({'file': path.name, 'seconds': round(time.monotonic() - start, 2), **response.json()})
 args.output.parent.mkdir(parents=True, exist_ok=True)

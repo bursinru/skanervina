@@ -32,6 +32,13 @@ class VisualDecisionTests(unittest.TestCase):
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .80}]
         self.assertEqual(self.recognizer.recognize(self.photo)['slug'], 'a')
 
+    def test_strong_top_match_does_not_need_margin(self):
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .871}, {'slug': 'b', 'score': .864}]
+        result = self.recognizer.recognize(self.photo)
+        self.assertEqual(result['status'], 'matched')
+        self.assertEqual(result['wine']['slug'], 'a')
+        self.assertEqual(result['recognition']['compared_with'][0]['slug'], 'a')
+
     def test_combined_mode_skips_ocr_by_default(self):
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .80}]
         result = self.recognizer.recognize(self.photo)
@@ -41,12 +48,20 @@ class VisualDecisionTests(unittest.TestCase):
         self.assertEqual(result['recognition']['method'], 'siglip2+pgvector')
 
     def test_combined_mode_runs_ocr_when_enabled(self):
-        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .94}]
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .80}, {'slug': 'b', 'score': .79}]
         with patch.dict(os.environ, {'CV_OCR_ENABLED': 'true'}):
             result = self.recognizer.recognize(self.photo)
         self.recognizer._ocr.assert_called_once()
         self.assertEqual(result['status'], 'uncertain')
         self.assertEqual(result['recognition']['method'], 'siglip2+pgvector+ocr')
+
+    def test_ocr_can_be_forced_off(self):
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .80}, {'slug': 'b', 'score': .79}]
+        with patch.dict(os.environ, {'CV_OCR_ENABLED': 'true'}):
+            result = self.recognizer.recognize(self.photo, ocr_enabled=False)
+        self.recognizer._ocr.assert_not_called()
+        self.assertEqual(result['recognition']['ocr'], 'skipped')
+        self.assertEqual(result['recognition']['method'], 'siglip2+pgvector')
 
     def test_image_only_mode_does_not_run_ocr(self):
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .80}]
@@ -63,14 +78,14 @@ class VisualDecisionTests(unittest.TestCase):
         self.assertGreaterEqual(result['recognition']['timings_ms']['ocr'], 0)
 
     def test_lookalikes_are_uncertain(self):
-        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .94}]
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .80}, {'slug': 'b', 'score': .79}]
         result = self.recognizer.recognize(self.photo)
         self.assertEqual(result['status'], 'uncertain')
         self.assertEqual(result['slug'], 'a')
         self.assertNotIn('wine', result)
         self.assertEqual([card['slug'] for card in result['lookalikes']], ['a', 'b'])
-        self.assertEqual(result['lookalikes'][0]['label_score'], 0.95)
-        self.assertEqual(result['lookalikes'][1]['label_score'], 0.94)
+        self.assertEqual(result['lookalikes'][0]['label_score'], 0.80)
+        self.assertEqual(result['lookalikes'][1]['label_score'], 0.79)
         self.assertEqual(result['ranking']['top5'][0]['slug'], 'a')
         self.assertGreaterEqual(result['recognition']['timings_ms']['total'], 0)
 

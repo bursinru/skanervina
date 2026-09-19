@@ -305,21 +305,44 @@ function updateControls(mode) {
   if (description) description.textContent = { initial:'Сфотографируйте бутылку или выберите снимок.', preview:'Система автоматически выделит этикетку перед поиском.', camera:'Держите телефон ровно и избегайте бликов.' }[mode];
   if (fileNote) fileNote.hidden = mode !== 'initial';
 }
+const PHOTO_TYPES = new Set(['image/jpeg','image/jpg','image/pjpeg','image/png','image/webp','image/heic','image/heif','image/heic-sequence','image/heif-sequence','image/avif']);
+const PHOTO_EXT = /\.(jpe?g|png|webp|heic|heif|avif)$/i;
+function isAcceptedPhoto(file) {
+  const type = (file.type || '').toLowerCase();
+  if (PHOTO_TYPES.has(type)) return true;
+  if (PHOTO_EXT.test(file.name || '')) return true;
+  return type.startsWith('image/');
+}
+function isHeifLike(file) {
+  const type = (file.type || '').toLowerCase();
+  return type.includes('heic') || type.includes('heif') || /\.(heic|heif)$/i.test(file.name || '');
+}
 async function selectPhoto(file) {
   if (!file || controller) return;
   notice('');
-  if (!['image/jpeg','image/png','image/webp'].includes(file.type)) { notice('Выберите JPG, PNG или WebP. Для HEIC сохраните фотографию в JPG.'); return; }
+  if (!isAcceptedPhoto(file)) { notice('Выберите фото с телефона: JPEG, HEIC, PNG, WebP или AVIF.'); return; }
   if (file.size > 15 * 1024 * 1024) { notice('Фотография слишком большая. Выберите файл до 15 МБ.'); return; }
   const candidateUrl = URL.createObjectURL(file);
+  let canPreview = false;
   try {
     const img = new Image(); img.src = candidateUrl; await img.decode();
     if (!img.naturalWidth || !img.naturalHeight || img.naturalWidth * img.naturalHeight > 24000000) throw new Error('Invalid image');
-  } catch { URL.revokeObjectURL(candidateUrl); notice('Не удалось открыть изображение. Попробуйте другую фотографию.'); return; }
+    canPreview = true;
+  } catch {
+    if (!isHeifLike(file)) {
+      URL.revokeObjectURL(candidateUrl);
+      notice('Не удалось открыть изображение. Попробуйте другую фотографию.');
+      return;
+    }
+  }
   stopCamera(); if (photoUrl) URL.revokeObjectURL(photoUrl);
   photo = file; photoUrl = candidateUrl;
-  $('photo-preview').src = photoUrl; $('photo-preview').hidden = false;
+  $('photo-preview').src = canPreview ? photoUrl : '';
+  $('photo-preview').hidden = !canPreview;
   $('example-bottle').hidden = true; $('sample-label').hidden = true;
-  $('viewfinder-caption').textContent = 'Ваше фото · проверьте читаемость этикетки';
+  $('viewfinder-caption').textContent = canPreview
+    ? 'Ваше фото · проверьте читаемость этикетки'
+    : 'HEIC с iPhone принят. В этом браузере превью нет — нажмите «Узнать вино».';
   updateControls('preview');
 }
 $('upload').onclick = $('replace-photo').onclick = () => { $('file-input').value = ''; $('file-input').click(); };
@@ -392,6 +415,48 @@ const queryParams = new URLSearchParams(location.search);
 const debugMode = queryParams.get('admin') === '1' || queryParams.get('debug') === '1';
 $('admin-tools').hidden = !debugMode;
 $('processing-debug').hidden = !debugMode;
+function debugOcrEnabled() {
+  const boxes = [$('debug-ocr'), $('debug-ocr-result')].filter(Boolean);
+  if (!debugMode) return true;
+  if (!boxes.length) return false;
+  return boxes.some(box => box.checked);
+}
+function setDebugOcr(enabled) {
+  [$('debug-ocr'), $('debug-ocr-result')].forEach(box => {
+    if (box) box.checked = enabled;
+  });
+}
+function debugCatalogImage(url) {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url, location.origin);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '';
+  } catch {
+    return '';
+  }
+}
+function cropFromPhoto(bbox) {
+  const img = $('photo-preview');
+  if (!img || !img.naturalWidth || !Array.isArray(bbox) || bbox.length < 4) return '';
+  const left = Math.max(0, Number(bbox[0]));
+  const top = Math.max(0, Number(bbox[1]));
+  const right = Math.min(1, Number(bbox[2]));
+  const bottom = Math.min(1, Number(bbox[3]));
+  if (!(right > left) || !(bottom > top)) return '';
+  const sx = Math.round(left * img.naturalWidth);
+  const sy = Math.round(top * img.naturalHeight);
+  const sw = Math.max(1, Math.round((right - left) * img.naturalWidth));
+  const sh = Math.max(1, Math.round((bottom - top) * img.naturalHeight));
+  const canvas = document.createElement('canvas');
+  const maxSide = 360;
+  const scale = Math.min(1, maxSide / Math.max(sw, sh));
+  canvas.width = Math.max(1, Math.round(sw * scale));
+  canvas.height = Math.max(1, Math.round(sh * scale));
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  try { return canvas.toDataURL('image/jpeg', 0.72); } catch { return ''; }
+}
 function formatElapsed(milliseconds) {
   const value = Number(milliseconds);
   return Number.isFinite(value) && value >= 0 ? `${(value / 1000).toFixed(1).replace('.', ',')} с` : '—';
@@ -418,7 +483,7 @@ function startProcessingLog() {
   processingTimer = setInterval(updateProcessingElapsed, 100);
   addProcessingLog('Фото принято');
   addProcessingLog('Запрос отправлен в распознавание');
-  addProcessingLog('Сервер ищет этикетку, вырезает crop, затем SigLIP, цвет и OCR');
+  addProcessingLog(debugOcrEnabled() ? 'OCR включён для этого скана' : 'OCR выключен для этого скана');
 }
 function stopProcessingLog() {
   clearInterval(processingTimer);
@@ -462,17 +527,32 @@ function renderScanDebug({ result, elapsed }) {
   const backendOther = Number.isFinite(serverTotal) ? Math.max(0, serverTotal - measuredTotal) : null;
   const browserOther = Number.isFinite(serverTotal) ? Math.max(0, elapsed - serverTotal) : null;
   const status = result?.status === 'matched' ? 'Найдено' : result?.status === 'uncertain' ? 'Нужно проверить' : 'Не найдено';
-  const scoreNote = similarity === null ? 'метрика недоступна' : 'итого после SigLIP + цвет + OCR';
+  const ocrOn = metrics.ocr_enabled === true || (metrics.ocr && metrics.ocr !== 'skipped');
+  const scoreNote = similarity === null ? 'метрика недоступна' : (ocrOn ? 'итого после SigLIP + цвет + OCR' : 'итого после SigLIP + цвет, без OCR');
   const bbox = metrics.label_detection?.bbox;
   const boxStyle = cropBoxStyle(bbox);
-  const cropSrc = metrics.crop_jpeg_base64 ? `data:image/jpeg;base64,${metrics.crop_jpeg_base64}` : '';
+  const cropSrc = metrics.crop_jpeg_base64 ? `data:image/jpeg;base64,${metrics.crop_jpeg_base64}` : cropFromPhoto(bbox);
+  const compared = Array.isArray(metrics.compared_with) && metrics.compared_with.length
+    ? metrics.compared_with
+    : (result?.ranking?.top5 || []).slice(0, 2);
+  const comparePair = compared.map((item, index) => {
+    const catalogSrc = debugCatalogImage(item.image_url);
+    const place = index === 0 ? '1 место' : `${index + 1} место`;
+    const pct = Number.isFinite(Number(item.score)) ? `${(Number(item.score) * 100).toFixed(1).replace('.', ',')}%` : '';
+    const title = [item.winery, item.name || item.slug].filter(Boolean).join(' · ');
+    return `<div class="scan-debug-compare-pair"><figure>${cropSrc ? `<img class="crop-sent" src="${escape(cropSrc)}" alt="Crop запроса">` : '<span class="dish-placeholder">Crop не собран</span>'}<figcaption>Ваш crop</figcaption></figure><span class="scan-debug-compare-vs" aria-hidden="true">↔</span><figure>${catalogSrc ? `<img class="crop-sent" src="${escape(catalogSrc)}" alt="">` : '<span class="dish-placeholder">Нет фото каталога</span>'}<figcaption>${escape(place)} · ${escape(pct)} · ${escape(title)}</figcaption></figure></div>`;
+  }).join('');
+  const neighborCards = (result?.ranking?.top5 || []).map((item, index) => {
+    const catalogSrc = debugCatalogImage(item.image_url);
+    const pct = Number.isFinite(Number(item.score)) ? `${(Number(item.score) * 100).toFixed(1).replace('.', ',')}%` : '—';
+    const siglip = Number.isFinite(Number(item.siglip)) ? `${(Number(item.siglip) * 100).toFixed(1).replace('.', ',')}%` : '—';
+    return `<article class="scan-debug-neighbor">${catalogSrc ? `<img src="${escape(catalogSrc)}" alt="">` : '<span class="dish-placeholder">Нет фото</span>'}<div><small>${index + 1}. ${escape(item.winery || '')}</small><strong>${escape(item.name || item.slug || '')}</strong><em>итого ${escape(pct)} · картинка ${escape(siglip)} · цвет ${formatPoints(item.color_delta)} · OCR ${formatPoints(item.ocr_delta)}</em></div></article>`;
+  }).join('');
+  const cropMarkup = `<div class="scan-debug-crop">${photoUrl && boxStyle ? `<figure><div class="crop-source"><img src="${escape(photoUrl)}" alt="Исходное фото"><span class="crop-box" style="${boxStyle}"></span></div><figcaption>Красная рамка — что вырезали</figcaption></figure>` : ''}${cropSrc ? `<figure><img class="crop-sent" src="${escape(cropSrc)}" alt="Crop"><figcaption>Этот crop сравнивали с каталогом</figcaption></figure>` : '<p class="scan-debug-footnote">Crop не пришёл — проверьте, что фото ещё в превью.</p>'}</div>${comparePair ? `<div class="scan-debug-details"><h3>С чем сравнивали crop</h3><div class="scan-debug-compare">${comparePair}</div></div>` : ''}${neighborCards ? `<div class="scan-debug-details"><h3>Похожие в индексе</h3><div class="scan-debug-neighbors">${neighborCards}</div></div>` : ''}`;
   const color = metrics.color || {};
   const paper = color.paper === 'cream' ? 'кремовая/светлая бумага' : color.paper === 'dark' ? 'тёмная бумага' : color.paper === 'mixed' ? 'смешанный тон' : 'не определён';
   const bottle = color.bottle_tone === 'red' ? 'красное' : color.bottle_tone === 'white' ? 'белое/светлое' : color.bottle_tone === 'rose' ? 'розовое' : 'не виден';
-  const ocrOn = metrics.ocr && metrics.ocr !== 'skipped';
-  const cropMarkup = `<div class="scan-debug-crop">${photoUrl && boxStyle ? `<figure><div class="crop-source"><img src="${escape(photoUrl)}" alt="Исходное фото"><span class="crop-box" style="${boxStyle}"></span></div><figcaption>Красная рамка — область, которую вырезает детектор</figcaption></figure>` : ''}${cropSrc ? `<figure><img class="crop-sent" src="${escape(cropSrc)}" alt="Crop, отправленный в поиск"><figcaption>Это ушло в SigLIP и OCR</figcaption></figure>` : ''}</div>`;
   const contribMarkup = `<div class="scan-debug-contrib"><div><small>SIGLIP</small><strong>${Number.isFinite(metrics.siglip) ? `${(metrics.siglip * 100).toFixed(1).replace('.', ',')}%` : '—'}</strong><em>сходство картинки</em></div><div><small>ЦВЕТ ЭТИКЕТКИ</small><strong>${formatPoints(metrics.color_delta)}</strong><em>${paper} · тон: ${bottle}</em></div><div><small>OCR</small><strong>${ocrOn ? formatPoints(metrics.ocr_delta) : 'выкл'}</strong><em>${ocrOn ? (metrics.ocr_text ? `«${escape(String(metrics.ocr_text).slice(0, 80))}»` : 'текст не прочитан') : 'на этом запросе не запускался'}</em></div></div>`;
-  const rankingRows = (result?.ranking?.top5 || []).map((item, index) => `<div class="scan-debug-detail-row"><div><strong>${index + 1}. ${escape(item.slug || '')}</strong><small>SigLIP ${(Number(item.siglip) * 100).toFixed(1).replace('.', ',')}% · цвет ${formatPoints(item.color_delta)} · OCR ${formatPoints(item.ocr_delta)}</small></div><b>${Number.isFinite(item.score) ? `${(item.score * 100).toFixed(1).replace('.', ',')}%` : '—'}</b></div>`).join('');
   const detailRows = [
     ['Декодирование фото', timingValues.decode, 'открытие, EXIF и приведение к RGB'],
     ['Поиск этикетки', timingValues.labelDetection, 'автоматический поиск области для crop'],
@@ -484,7 +564,7 @@ function renderScanDebug({ result, elapsed }) {
     ['Загрузка, сеть и браузер', browserOther, 'разница между полным ожиданием и backend'],
   ];
   const detailMarkup = detailRows.map(([label, value, note]) => `<div class="scan-debug-detail-row"><div><strong>${label}</strong><small>${note}</small></div><b>${timing(value)}</b></div>`).join('');
-  return `<section class="scan-debug" aria-label="Диагностика сканирования"><div class="scan-debug-heading"><div><small>DEBUG · РЕЗУЛЬТАТ СКАНИРОВАНИЯ</small><h2>Технические показатели</h2></div><span class="scan-debug-status">${escape(status)}</span></div><div class="scan-debug-metrics"><div><small>ИТОГО</small><strong>${score}</strong><em>${scoreNote}</em></div><div><small>СКОРОСТЬ</small><strong>${formatElapsed(elapsed)}</strong><em>полное ожидание в браузере</em></div><div><small>СЕРВЕР</small><strong>${timing(serverTotal)}</strong><em>распознавание backend</em></div></div>${cropMarkup}${contribMarkup}${rankingRows ? `<div class="scan-debug-details"><h3>Вклад в топ-5</h3>${rankingRows}</div>` : ''}<div class="scan-debug-details"><h3>Разбивка времени</h3>${detailMarkup}</div><p class="scan-debug-footnote">Проценты — косинус SigLIP. «п.п.» у цвета и OCR — сколько пунктов добавили или сняли к этой оценке, не отдельная вероятность. Время «Загрузка, сеть и браузер» — расчётная разница.</p></section>`;
+  return `<section class="scan-debug" aria-label="Диагностика сканирования"><div class="scan-debug-heading"><div><small>DEBUG · РЕЗУЛЬТАТ СКАНИРОВАНИЯ</small><h2>Технические показатели</h2></div><span class="scan-debug-status">${escape(status)}</span></div><div class="debug-ocr-bar"><label class="debug-ocr-toggle"><input type="checkbox" id="debug-ocr-result" ${ocrOn ? 'checked' : ''}> OCR</label><button type="button" class="button secondary" id="debug-rescan">Пересканировать это фото</button><span>Этот скан: OCR ${ocrOn ? 'включён' : 'выключен'}. Смените галочку и нажмите пересканировать.</span></div><div class="scan-debug-metrics"><div><small>ИТОГО</small><strong>${score}</strong><em>${scoreNote}</em></div><div><small>СКОРОСТЬ</small><strong>${formatElapsed(elapsed)}</strong><em>полное ожидание в браузере</em></div><div><small>СЕРВЕР</small><strong>${timing(serverTotal)}</strong><em>распознавание backend</em></div></div>${cropMarkup}${contribMarkup}<div class="scan-debug-details"><h3>Разбивка времени</h3>${detailMarkup}</div><p class="scan-debug-footnote">Проценты — косинус картинки. «п.п.» у цвета и OCR — сколько пунктов добавили или сняли. Если OCR выключен, его вклад должен быть «выкл».</p></section>`;
 }
 function showDiagnostics(result, elapsed) {
   if (!debugMode) return;
@@ -516,7 +596,15 @@ function showDiagnostics(result, elapsed) {
   if (!$('result-screen')?.hidden && resultTop) resultTop.after(details);
   else $('admin-tools').append(details);
 }
-$('recognize').onclick = async () => {
+$('debug-ocr')?.addEventListener('change', event => setDebugOcr(event.target.checked));
+function bindDebugPanel() {
+  const resultBox = $('debug-ocr-result');
+  if (resultBox) resultBox.onchange = () => setDebugOcr(resultBox.checked);
+  const rescan = $('debug-rescan');
+  if (rescan) rescan.onclick = () => runRecognize();
+}
+$('recognize').onclick = () => runRecognize();
+async function runRecognize() {
   if (!photo || controller) return;
   const endpoint = window.SCANNER_CONFIG?.recognitionEndpoint;
   if (!endpoint) { notice('Фото готово. Распознавание ещё не подключено — снимок никуда не отправлен. Пока можно открыть пример карточки ниже.'); return; }
@@ -525,17 +613,23 @@ $('recognize').onclick = async () => {
   const started = performance.now();
   $('scanning-label').src = photoUrl;
   $('processing-status').textContent = 'Идёт поиск по каталогу…';
+  $('scanner-screen').hidden = false;
+  $('result-screen').hidden = true;
   startProcessingLog();
   $('processing').hidden = false;
   try {
     const body = new FormData(); body.append('image', photo);
-    const headers = debugMode ? { 'X-Scanner-Debug': '1' } : {};
-    const response = await fetch(endpoint, { method:'POST', headers, body, signal:active.signal });
+    const ocrOn = debugOcrEnabled();
+    const url = new URL(endpoint, location.origin);
+    if (debugMode) url.searchParams.set('ocr', ocrOn ? '1' : '0');
+    const headers = debugMode ? { 'X-Scanner-Debug': '1', 'X-Scanner-OCR': ocrOn ? '1' : '0' } : {};
+    const response = await fetch(url.toString(), { method:'POST', headers, body, signal:active.signal });
     if (response.status === 403) { notice('Сервер отклонил debug-запрос.'); return; }
     if (!response.ok) throw new Error('service');
     const result = await response.json();
     const elapsed = performance.now() - started;
     addProcessingLog(`Ответ сервера получен за ${formatElapsed(elapsed)}`);
+    addProcessingLog(result.recognition?.ocr_enabled ? 'Сервер: OCR был включён' : 'Сервер: OCR был выключен');
     if (result.status === 'matched') {
       if (!result.wine?.name || !(result.wine.slug || result.slug)) throw new Error('contract');
       showWine({ ...result.wine, slug:result.wine.slug || result.slug, image_url:result.wine.image_url || result.wine.imageUrl || result.wine.photo_name, demo:false }, { result, elapsed });
@@ -549,7 +643,7 @@ $('recognize').onclick = async () => {
   } catch (err) {
     notice(active.signal.aborted ? (active.signal.reason === 'timeout' ? 'Поиск занял слишком много времени. Попробуйте ещё раз.' : 'Поиск отменён. Можно выбрать другое фото.') : 'Сервис распознавания сейчас недоступен или вернул неполную карточку. Попробуйте позже.');
   } finally { clearTimeout(timer); controller = null; stopProcessingLog(); $('processing').hidden = true; }
-};
+}
 $('cancel-request').onclick = () => controller?.abort('user');
 function wineSlugFromPath() {
   const match = location.pathname.match(/^\/scanner\/([^/]+)\/?$/);
@@ -659,6 +753,7 @@ function showWine(wine, scanMeta = null, options = {}) {
   }
   $('result-screen').focus({ preventScroll:true }); window.scrollTo({ top:0, behavior:'instant' });
   bindAfterSearch(wine, scanMeta);
+  bindDebugPanel();
 }
 function showNotFound(result, elapsed) {
   stopCamera();
@@ -694,6 +789,7 @@ function showNotFound(result, elapsed) {
   $('result-screen').focus({ preventScroll:true });
   window.scrollTo({ top:0, behavior:'instant' });
   if (debugMode) showDiagnostics(result, elapsed);
+  bindDebugPanel();
 }
 function backToScanner(options = {}) {
   $('result-screen').hidden = true;

@@ -207,7 +207,7 @@ def main():
         report["health"] = health.json()
         query_dir = Path("Датасет/eval/queries")
         for path in sorted(query_dir.iterdir()):
-            if path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+            if path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".avif"}:
                 continue
             import mimetypes
 
