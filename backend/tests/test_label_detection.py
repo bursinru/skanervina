@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 
 from app.label_detection import crop_label, detect_label, enhance_label
@@ -77,6 +78,33 @@ class LabelDetectionTests(unittest.TestCase):
         self.assertLess(right, 0.48)
         self.assertGreater(right, 0.28)
         self.assertGreater(bottom - top, right - left)
+
+    def test_trims_black_glass_on_the_right(self):
+        image = Image.new("RGB", (640, 400), (5, 5, 7))
+        for x in range(90, 250):
+            for y in range(40, 360):
+                image.putpixel((x, y), (240, 228, 206))
+        left, top, right, bottom = detect_label(image).bbox
+        self.assertLess(left, 90 / 640 + 0.05)
+        self.assertGreater(right, 250 / 640 - 0.05)
+        self.assertLess(right, 0.52)
+
+    def test_warps_trapezoid_paper_to_a_front_rectangle(self):
+        pixels = np.zeros((420, 520, 3), dtype=np.uint8)
+        pixels[:] = (6, 6, 8)
+        for y in range(50, 390):
+            t = (y - 50) / 340
+            left = int(190 + t * (-55))
+            right = int(300 + t * 70)
+            pixels[y, left:right] = (236, 224, 196)
+        image = Image.fromarray(pixels, 'RGB')
+        detection = detect_label(image)
+        self.assertIsNotNone(detection.quad)
+        self.assertEqual(len(detection.quad), 4)
+        cropped = crop_label(image, detection)
+        sample = np.asarray(cropped.resize((32, 48)))
+        self.assertGreater(sample.mean(), 140)
+        self.assertGreater(cropped.height, cropped.width * 0.9)
 
 
 if __name__ == "__main__":

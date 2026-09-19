@@ -6,13 +6,15 @@ throws SigLIP at the wrong wine.
 """
 
 from dataclasses import dataclass
-from typing import Iterable, List, Sequence, Tuple
+from math import atan2, hypot
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 
 NormalizedBox = Tuple[float, float, float, float]
+Quad = Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float]]
 
 
 @dataclass(frozen=True)
@@ -20,6 +22,7 @@ class LabelDetection:
     bbox: NormalizedBox
     confidence: float
     method: str = "label_panel"
+    quad: Optional[Quad] = None
 
 
 def _integral(values: np.ndarray) -> np.ndarray:
@@ -272,6 +275,183 @@ def _expand_to_paper(mask: np.ndarray, box: Sequence[int]) -> Tuple[int, int, in
     return left, top, right, bottom
 
 
+def _cover_and_trim(mask: np.ndarray, box: Sequence[int]) -> Tuple[int, int, int, int]:
+    """Snap to the cream panel: pull in missing brand line, drop empty glass."""
+
+    height, width = mask.shape
+    left, top, right, bottom = [int(value) for value in box]
+    extra_x = max(10, round((right - left) * 0.4))
+    extra_y = max(8, round((bottom - top) * 0.22))
+    search_left = max(0, left - extra_x)
+    search_top = max(0, top - extra_y)
+    search_right = min(width, right + extra_x)
+    search_bottom = min(height, bottom + extra_y)
+    ys, xs = np.where(mask[search_top:search_bottom, search_left:search_right])
+    if xs.size >= 60:
+        left = search_left + int(xs.min())
+        top = search_top + int(ys.min())
+        right = search_left + int(xs.max()) + 1
+        bottom = search_top + int(ys.max()) + 1
+
+    def column_ok(x: int) -> bool:
+        return float(mask[top:bottom, x].mean()) >= 0.1
+
+    def row_ok(y: int) -> bool:
+        return float(mask[y, left:right].mean()) >= 0.08
+
+    while left < right - 4 and not column_ok(left):
+        left += 1
+    while right > left + 4 and not column_ok(right - 1):
+        right -= 1
+    while top < bottom - 4 and not row_ok(top):
+        top += 1
+    while bottom > top + 4 and not row_ok(bottom - 1):
+        bottom -= 1
+    return left, top, right, bottom
+
+
+def _convex_hull(points: np.ndarray) -> List[Tuple[float, float]]:
+    if points.size == 0:
+        return []
+    pts = np.unique(points, axis=0)
+    pts = pts[np.lexsort((pts[:, 1], pts[:, 0]))]
+    if len(pts) <= 2:
+        return [tuple(map(float, row)) for row in pts]
+
+    def cross(origin, start, end) -> float:
+        return (start[0] - origin[0]) * (end[1] - origin[1]) - (start[1] - origin[1]) * (end[0] - origin[0])
+
+    lower: List[np.ndarray] = []
+    for point in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], point) <= 0:
+            lower.pop()
+        lower.append(point)
+    upper: List[np.ndarray] = []
+    for point in pts[::-1]:
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], point) <= 0:
+            upper.pop()
+        upper.append(point)
+    hull = np.vstack([lower[:-1], upper[:-1]])
+    return [tuple(map(float, row)) for row in hull]
+
+
+def _simplify_quad(hull: Sequence[Tuple[float, float]]) -> Optional[List[Tuple[float, float]]]:
+    points = list(hull)
+    if len(points) < 4:
+        return None
+    while len(points) > 4:
+        drop = 0
+        smallest = None
+        count = len(points)
+        for index in range(count):
+            prev_pt = points[(index - 1) % count]
+            point = points[index]
+            next_pt = points[(index + 1) % count]
+            area = abs(
+                (point[0] - prev_pt[0]) * (next_pt[1] - prev_pt[1])
+                - (point[1] - prev_pt[1]) * (next_pt[0] - prev_pt[0])
+            )
+            if smallest is None or area < smallest:
+                smallest = area
+                drop = index
+        points.pop(drop)
+    return points
+
+
+def _order_quad(points: Sequence[Tuple[float, float]]) -> Quad:
+    cx = sum(point[0] for point in points) / 4
+    cy = sum(point[1] for point in points) / 4
+    ordered = sorted(points, key=lambda point: atan2(point[1] - cy, point[0] - cx))
+    start = min(range(4), key=lambda index: ordered[index][0] + ordered[index][1])
+    ordered = ordered[start:] + ordered[:start]
+    return (ordered[0], ordered[1], ordered[2], ordered[3])
+
+
+def _quad_area(quad: Sequence[Tuple[float, float]]) -> float:
+    area = 0.0
+    for index, point in enumerate(quad):
+        nxt = quad[(index + 1) % 4]
+        area += point[0] * nxt[1] - nxt[0] * point[1]
+    return abs(area) / 2
+
+
+def _expand_quad(quad: Quad, pad: float, width: int, height: int) -> Quad:
+    cx = sum(point[0] for point in quad) / 4
+    cy = sum(point[1] for point in quad) / 4
+    out = []
+    for x, y in quad:
+        out.append(
+            (
+                min(width - 1, max(0.0, x + (x - cx) * pad)),
+                min(height - 1, max(0.0, y + (y - cy) * pad)),
+            )
+        )
+    return _order_quad(out)
+
+
+def _quad_from_mask(mask: np.ndarray, box: Sequence[int]) -> Optional[Quad]:
+    height, width = mask.shape
+    left, top, right, bottom = [int(value) for value in box]
+    if right - left < 12 or bottom - top < 16:
+        return None
+    ys, xs = np.where(mask[top:bottom, left:right])
+    if xs.size < 80:
+        return None
+    step = max(1, xs.size // 900)
+    points = np.stack((xs[::step] + left, ys[::step] + top), axis=1)
+    simplified = _simplify_quad(_convex_hull(points))
+    if not simplified:
+        return None
+    quad = _order_quad(simplified)
+    area = _quad_area(quad)
+    box_area = max(1, (right - left) * (bottom - top))
+    if area < box_area * 0.45:
+        return None
+    sides = [hypot(quad[i][0] - quad[(i + 1) % 4][0], quad[i][1] - quad[(i + 1) % 4][1]) for i in range(4)]
+    if min(sides) < 12:
+        return None
+    signs = []
+    for i in range(4):
+        ax, ay = quad[i]
+        bx, by = quad[(i + 1) % 4]
+        cx, cy = quad[(i + 2) % 4]
+        signs.append((bx - ax) * (cy - ay) - (by - ay) * (cx - ax))
+    if any(value == 0 for value in signs) or (min(signs) < 0) == (max(signs) > 0):
+        return None
+    width_top = hypot(quad[1][0] - quad[0][0], quad[1][1] - quad[0][1])
+    height_side = hypot(quad[3][0] - quad[0][0], quad[3][1] - quad[0][1])
+    aspect = height_side / max(width_top, 1e-6)
+    if aspect < 0.7 or aspect > 3.4:
+        return None
+    return _expand_quad(quad, 0.04, width, height)
+
+
+def _perspective_coeffs(source: Sequence[Tuple[float, float]], dest: Sequence[Tuple[float, float]]):
+    matrix = []
+    for (x, y), (u, v) in zip(dest, source):
+        matrix.append([x, y, 1, 0, 0, 0, -u * x, -u * y])
+        matrix.append([0, 0, 0, x, y, 1, -v * x, -v * y])
+    try:
+        return np.linalg.solve(np.asarray(matrix, dtype=np.float64), np.asarray(source, dtype=np.float64).reshape(8))
+    except np.linalg.LinAlgError:
+        return None
+
+
+def _warp_quad(image: Image.Image, quad: Quad) -> Optional[Image.Image]:
+    width, height = image.size
+    source = [(x * width, y * height) for x, y in quad]
+    out_w = max(32, int(round(max(hypot(source[1][0] - source[0][0], source[1][1] - source[0][1]), hypot(source[2][0] - source[3][0], source[2][1] - source[3][1])))))
+    out_h = max(32, int(round(max(hypot(source[3][0] - source[0][0], source[3][1] - source[0][1]), hypot(source[2][0] - source[1][0], source[2][1] - source[1][1])))))
+    scale = min(1.0, 1024 / max(out_w, out_h))
+    out_w = max(32, int(out_w * scale))
+    out_h = max(32, int(out_h * scale))
+    dest = ((0.0, 0.0), (out_w - 1.0, 0.0), (out_w - 1.0, out_h - 1.0), (0.0, out_h - 1.0))
+    coeffs = _perspective_coeffs(source, dest)
+    if coeffs is None:
+        return None
+    return image.transform((out_w, out_h), Image.Transform.PERSPECTIVE, coeffs.tolist(), Image.Resampling.BICUBIC)
+
+
 def _grid_boxes(width: int, height: int) -> Iterable[Tuple[int, int, int, int]]:
     widths = (0.18, 0.24, 0.32, 0.42, 0.52, 0.64)
     heights = (0.32, 0.42, 0.52, 0.62, 0.74)
@@ -373,6 +553,7 @@ def detect_label(image: Image.Image) -> LabelDetection:
             method = "label_panel"
 
     best_box = _expand_to_paper(filled, best_box)
+    best_box = _cover_and_trim(filled, best_box)
     if _frame_like(best_box, width, height):
         best_box = (
             round(width * 0.28),
@@ -380,9 +561,10 @@ def detect_label(image: Image.Image) -> LabelDetection:
             round(width * 0.72),
             round(height * 0.78),
         )
+        best_box = _cover_and_trim(filled, best_box)
     left, top, right, bottom = best_box
-    pad_x = max(0.02, (right - left) / width * 0.07)
-    pad_y = max(0.018, (bottom - top) / height * 0.06)
+    pad_x = max(0.01, (right - left) / width * 0.03)
+    pad_y = max(0.01, (bottom - top) / height * 0.03)
     result = (
         max(0.0, left / width - pad_x),
         max(0.0, top / height - pad_y),
@@ -391,13 +573,28 @@ def detect_label(image: Image.Image) -> LabelDetection:
     )
     if (result[2] - result[0]) * (result[3] - result[1]) > 0.82:
         result = (left / width, top / height, right / width, bottom / height)
-    return LabelDetection(result, round(max(0.0, min(1.0, best_score)), 4), method)
+    pixel_quad = _quad_from_mask(filled, (left, top, right, bottom))
+    quad = None
+    method_name = method
+    if pixel_quad:
+        quad = (
+            (pixel_quad[0][0] / width, pixel_quad[0][1] / height),
+            (pixel_quad[1][0] / width, pixel_quad[1][1] / height),
+            (pixel_quad[2][0] / width, pixel_quad[2][1] / height),
+            (pixel_quad[3][0] / width, pixel_quad[3][1] / height),
+        )
+        method_name = "paper_quad"
+    return LabelDetection(result, round(max(0.0, min(1.0, best_score)), 4), method_name, quad)
 
 
 def crop_label(image: Image.Image, detection: LabelDetection) -> Image.Image:
-    """Crop a detected label from the original-resolution image."""
+    """Crop a detected label, unwarping a paper quad when corners are reliable."""
 
     image = ImageOps.exif_transpose(image).convert("RGB")
+    if detection.quad:
+        warped = _warp_quad(image, detection.quad)
+        if warped is not None and warped.width >= 32 and warped.height >= 32:
+            return warped
     left, top, right, bottom = detection.bbox
     return image.crop(
         (

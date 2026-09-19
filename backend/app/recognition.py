@@ -176,6 +176,7 @@ class Recognizer:
                     "bbox": [round(value, 4) for value in detection.bbox],
                     "confidence": detection.confidence,
                     "method": detection.method,
+                    "quad": [[round(point[0], 4), round(point[1], 4)] for point in detection.quad] if detection.quad else None,
                 },
                 "timings_ms": {
                     "decode": round(decode_ms, 1),

@@ -343,9 +343,12 @@ body{background:#fffdfb}
 .scan-debug-crop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
 .scan-debug-crop figure{margin:0}
 .scan-debug-crop figcaption{margin-top:6px;color:var(--muted);font-size:10px;line-height:1.35}
-.crop-source{position:relative;overflow:hidden;border-radius:12px;background:#1d1317}
-.crop-source img,.crop-sent{display:block;width:100%;height:auto;max-height:280px;object-fit:contain;background:#1d1317;border-radius:12px}
+.crop-source{position:relative;display:inline-block;max-width:100%;overflow:hidden;border-radius:12px;background:#1d1317}
+.crop-source img{display:block;max-width:100%;max-height:280px;width:auto;height:auto;background:#1d1317}
+.crop-sent{display:block;max-width:100%;max-height:280px;width:auto;height:auto;margin:0 auto;background:#1d1317;border-radius:12px}
 .crop-box{position:absolute;border:2px solid #e23d3d;box-shadow:0 0 0 999px #00000055;pointer-events:none}
+.crop-quad{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.crop-quad polygon{fill:#e23d3d22;stroke:#e23d3d;stroke-width:1.8;vector-effect:non-scaling-stroke}
 .scan-debug-contrib{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
 .scan-debug-contrib>div{min-width:0;padding:12px;border-radius:12px;background:#f1e7d6}
 .scan-debug-contrib small{display:block;color:var(--muted);font-size:9px;letter-spacing:.7px}

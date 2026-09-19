@@ -506,6 +506,12 @@ function cropBoxStyle(bbox) {
   if (![left, top, width, height].every(Number.isFinite)) return '';
   return `left:${left}%;top:${top}%;width:${width}%;height:${height}%`;
 }
+function quadOverlay(quad) {
+  if (!Array.isArray(quad) || quad.length !== 4) return '';
+  const points = quad.map(point => `${Number(point[0]) * 100},${Number(point[1]) * 100}`).join(' ');
+  if (!points.includes(',')) return '';
+  return `<svg class="crop-quad" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="${points}"></polygon></svg>`;
+}
 function renderScanDebug({ result, elapsed }) {
   if (!debugMode) return '';
   const metrics = result?.recognition || {};
@@ -531,6 +537,7 @@ function renderScanDebug({ result, elapsed }) {
   const scoreNote = similarity === null ? 'метрика недоступна' : (ocrOn ? 'итого после SigLIP + цвет + OCR' : 'итого после SigLIP + цвет, без OCR');
   const bbox = metrics.label_detection?.bbox;
   const boxStyle = cropBoxStyle(bbox);
+  const quadMarkup = quadOverlay(metrics.label_detection?.quad);
   const cropSrc = metrics.crop_jpeg_base64 ? `data:image/jpeg;base64,${metrics.crop_jpeg_base64}` : cropFromPhoto(bbox);
   const compared = Array.isArray(metrics.compared_with) && metrics.compared_with.length
     ? metrics.compared_with
@@ -548,7 +555,7 @@ function renderScanDebug({ result, elapsed }) {
     const siglip = Number.isFinite(Number(item.siglip)) ? `${(Number(item.siglip) * 100).toFixed(1).replace('.', ',')}%` : '—';
     return `<article class="scan-debug-neighbor">${catalogSrc ? `<img src="${escape(catalogSrc)}" alt="">` : '<span class="dish-placeholder">Нет фото</span>'}<div><small>${index + 1}. ${escape(item.winery || '')}</small><strong>${escape(item.name || item.slug || '')}</strong><em>итого ${escape(pct)} · картинка ${escape(siglip)} · цвет ${formatPoints(item.color_delta)} · OCR ${formatPoints(item.ocr_delta)}</em></div></article>`;
   }).join('');
-  const cropMarkup = `<div class="scan-debug-crop">${photoUrl && boxStyle ? `<figure><div class="crop-source"><img src="${escape(photoUrl)}" alt="Исходное фото"><span class="crop-box" style="${boxStyle}"></span></div><figcaption>Красная рамка — что вырезали</figcaption></figure>` : ''}${cropSrc ? `<figure><img class="crop-sent" src="${escape(cropSrc)}" alt="Crop"><figcaption>Этот crop сравнивали с каталогом</figcaption></figure>` : '<p class="scan-debug-footnote">Crop не пришёл — проверьте, что фото ещё в превью.</p>'}</div>${comparePair ? `<div class="scan-debug-details"><h3>С чем сравнивали crop</h3><div class="scan-debug-compare">${comparePair}</div></div>` : ''}${neighborCards ? `<div class="scan-debug-details"><h3>Похожие в индексе</h3><div class="scan-debug-neighbors">${neighborCards}</div></div>` : ''}`;
+  const cropMarkup = `<div class="scan-debug-crop">${photoUrl && (quadMarkup || boxStyle) ? `<figure><div class="crop-source"><img src="${escape(photoUrl)}" alt="Исходное фото">${quadMarkup || (boxStyle ? `<span class="crop-box" style="${boxStyle}"></span>` : '')}</div><figcaption>${quadMarkup ? 'Красный контур — панель этикетки, которую выпрямили' : 'Красная рамка — что вырезали'}</figcaption></figure>` : ''}${cropSrc ? `<figure><img class="crop-sent" src="${escape(cropSrc)}" alt="Crop"><figcaption>Этот crop сравнивали с каталогом</figcaption></figure>` : '<p class="scan-debug-footnote">Crop не пришёл — проверьте, что фото ещё в превью.</p>'}</div>${comparePair ? `<div class="scan-debug-details"><h3>С чем сравнивали crop</h3><div class="scan-debug-compare">${comparePair}</div></div>` : ''}${neighborCards ? `<div class="scan-debug-details"><h3>Похожие в индексе</h3><div class="scan-debug-neighbors">${neighborCards}</div></div>` : ''}`;
   const color = metrics.color || {};
   const paper = color.paper === 'cream' ? 'кремовая/светлая бумага' : color.paper === 'dark' ? 'тёмная бумага' : color.paper === 'mixed' ? 'смешанный тон' : 'не определён';
   const bottle = color.bottle_tone === 'red' ? 'красное' : color.bottle_tone === 'white' ? 'белое/светлое' : color.bottle_tone === 'rose' ? 'розовое' : 'не виден';
