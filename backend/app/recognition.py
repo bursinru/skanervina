@@ -363,7 +363,7 @@ class Recognizer:
             else:
                 image = self._load_catalog_image(wine)
                 if image is not None:
-                    preview = self._preview_jpeg(crop_label(image, detect_label(image)))
+                    preview = self._preview_jpeg(crop_label(image, detect_label(image, catalog=True)))
         except Exception:
             logging.exception("Could not build catalog label preview for %s", wine.slug)
         self._catalog_crop_cache[wine.slug] = preview

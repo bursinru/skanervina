@@ -32,7 +32,7 @@ def crop_view_digest(file_digest: str) -> str:
 
 
 def label_crop_if_useful(image: Image.Image):
-    detection = detect_label(image)
+    detection = detect_label(image, catalog=True)
     left, top, right, bottom = detection.bbox
     area = (right - left) * (bottom - top)
     if area >= CROP_AREA_MAX:

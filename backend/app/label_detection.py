@@ -532,6 +532,20 @@ def _quad_from_mask(mask: np.ndarray, box: Sequence[int]) -> Optional[Quad]:
     aspect = height_side / max(width_top, 1e-6)
     if aspect < 0.7 or aspect > 3.4:
         return None
+
+    def mostly_horizontal(start, end) -> bool:
+        return abs(end[0] - start[0]) >= abs(end[1] - start[1]) * 1.6
+
+    def mostly_vertical(start, end) -> bool:
+        return abs(end[1] - start[1]) >= abs(end[0] - start[0]) * 1.6
+
+    if not (
+        mostly_horizontal(quad[0], quad[1])
+        and mostly_horizontal(quad[3], quad[2])
+        and mostly_vertical(quad[0], quad[3])
+        and mostly_vertical(quad[1], quad[2])
+    ):
+        return None
     return _expand_quad(quad, 0.04, width, height)
 
 
@@ -579,7 +593,7 @@ def _grid_boxes(width: int, height: int) -> Iterable[Tuple[int, int, int, int]]:
                     yield left, top, right, bottom
 
 
-def detect_label(image: Image.Image) -> LabelDetection:
+def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection:
     """Return a padded bbox around the likely front label, not a drawing crop."""
 
     prepared = ImageOps.exif_transpose(image).convert("RGB")
@@ -655,10 +669,11 @@ def detect_label(image: Image.Image) -> LabelDetection:
             best_box = box
             method = "paper_panel"
 
-    tall_packshot = height >= width * 1.7
+    studio_frac = float(_studio_background(pixels).mean())
+    tall_packshot = height >= width * 1.7 and (catalog or studio_frac >= 0.15)
     band = _paper_band_box(closed)
     if band and not _frame_like(band, width, height, allow_wide=True):
-        score = score_box(band) + (0.45 if tall_packshot else 0.08)
+        score = score_box(band) + (0.45 if tall_packshot else 0.04)
         if score > best_score or tall_packshot:
             best_score = max(score, best_score)
             best_box = band
@@ -698,7 +713,7 @@ def detect_label(image: Image.Image) -> LabelDetection:
     )
     if (result[2] - result[0]) * (result[3] - result[1]) > 0.82:
         result = (left / width, top / height, right / width, bottom / height)
-    pixel_quad = None if tall_packshot else _quad_from_mask(closed, (left, top, right, bottom))
+    pixel_quad = None if (tall_packshot or method == "paper_band") else _quad_from_mask(closed, (left, top, right, bottom))
     quad = None
     method_name = method
     if pixel_quad:
