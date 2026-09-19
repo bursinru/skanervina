@@ -26,9 +26,13 @@ services:
       CV_OCR_ENABLED: "false"
       HF_HOME: /models
       CV_DEVICE: cpu
+      CV_MATCH_THRESHOLD: "0.75"
+      CV_MATCH_MARGIN: "0.04"
       SCANNER_ADMIN_TOKEN: ${SCANNER_ADMIN_TOKEN:-}
     volumes:
       - ./Датасет:/catalog:ro
+      - ./public:/app/public:ro
+      - ./backend/app:/app/app:ro
       - model-cache:/models
     depends_on:
       db:

@@ -194,7 +194,7 @@ class Recognizer:
             best = candidates[0]
             margin = best['score'] - candidates[1]['score'] if len(candidates) > 1 else 0
             wine = self.catalog.get(best['slug'])
-            threshold = float(os.getenv('CV_MATCH_THRESHOLD', '0.80'))
+            threshold = float(os.getenv('CV_MATCH_THRESHOLD', '0.75'))
             min_margin = float(os.getenv('CV_MATCH_MARGIN', '0.04'))
             text, ocr_status, text_matches, ocr_ms = "", "skipped", [], 0.0
             corroborated = False

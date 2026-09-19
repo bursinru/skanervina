@@ -22,11 +22,13 @@ class VisualDecisionTests(unittest.TestCase):
         Image.new('RGB', (50, 50), 'white').save(output, format='PNG')
         self.photo = output.getvalue()
 
-    def test_match_from_eighty_percent(self):
-        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .81}, {'slug': 'b', 'score': .70}]
+    def test_match_from_seventy_five_percent(self):
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .76}, {'slug': 'b', 'score': .70}]
         result = self.recognizer.recognize(self.photo)
         self.assertEqual(result['status'], 'matched')
         self.assertEqual(result['wine']['slug'], 'a')
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .74}, {'slug': 'b', 'score': .60}]
+        self.assertEqual(self.recognizer.recognize(self.photo)['status'], 'uncertain')
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .80}]
         self.assertEqual(self.recognizer.recognize(self.photo)['slug'], 'a')
 
