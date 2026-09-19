@@ -79,8 +79,11 @@ def main():
     parser.add_argument('--index', action='store_true')
     parser.add_argument('--extra-images', type=Path)
     parser.add_argument('--only-slug', type=str)
+    parser.add_argument('--slug-prefix', type=str)
     parser.add_argument('--crops', action='store_true', default=True)
     parser.add_argument('--no-crops', action='store_false', dest='crops')
+    parser.add_argument('--force-crops', action='store_true')
+    parser.add_argument('--save-crops', type=Path)
     parser.add_argument('--batch-size', type=int, default=16)
     args = parser.parse_args()
     if not 1 <= args.batch_size <= 64:
@@ -93,7 +96,11 @@ def main():
         if not wine:
             raise ValueError(f'Unknown slug: {args.only_slug}')
         wines = [wine]
-    if not args.only_slug:
+    if args.slug_prefix:
+        wines = [wine for wine in wines if wine.slug.startswith(args.slug_prefix)]
+        if not wines:
+            raise ValueError(f'No wines with slug prefix: {args.slug_prefix}')
+    if not args.only_slug and not args.slug_prefix:
         with connect() as db:
             for wine in wines:
                 db.execute('INSERT INTO wines (slug, card, image_name) VALUES (%s,%s,%s) ON CONFLICT (slug) DO UPDATE SET card=excluded.card, image_name=excluded.image_name',
@@ -135,7 +142,7 @@ def main():
                 views.append(('crop', crop_view_digest(digest)))
             for kind, view_digest in views:
                 previous = existing.get((wine.slug, view_digest), {})
-                if previous.get('model') == MODEL_ID:
+                if previous.get('model') == MODEL_ID and not (args.force_crops and kind == 'crop'):
                     skipped += 1
                     continue
                 pending.append((wine.slug, path, view_digest, kind))
@@ -152,6 +159,9 @@ def main():
                         skipped += 1
                         continue
                     rgb = cropped
+                    if args.save_crops:
+                        args.save_crops.mkdir(parents=True, exist_ok=True)
+                        rgb.convert('RGB').save(args.save_crops / f'{item[0]}.jpg', quality=92)
                 images.append(rgb)
                 batch.append(item)
             except Exception:

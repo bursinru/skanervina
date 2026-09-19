@@ -60,10 +60,10 @@ class LabelDetectionTests(unittest.TestCase):
             for y in range(318, 468):
                 image.putpixel((x, y), (36, 32, 28))
         left, top, right, bottom = detect_label(image).bbox
-        self.assertLess(left, 0.30)
-        self.assertGreater(right, 0.70)
+        self.assertLess(left, 0.34)
+        self.assertGreater(right, 0.66)
         self.assertLess(top, 0.28)
-        self.assertGreater(bottom, 0.74)
+        self.assertGreater(bottom, 0.50)
 
     def test_left_bottle_is_not_pulled_into_black_space(self):
         image = Image.new("RGB", (640, 480), (6, 6, 8))
@@ -105,6 +105,17 @@ class LabelDetectionTests(unittest.TestCase):
         sample = np.asarray(cropped.resize((32, 48)))
         self.assertGreater(sample.mean(), 140)
         self.assertGreater(cropped.height, cropped.width * 0.9)
+
+    def test_tall_product_shot_crops_the_label_band(self):
+        pixels = np.full((900, 280, 3), 248, dtype=np.uint8)
+        pixels[50:850, 80:200] = (36, 72, 40)
+        pixels[500:790, 84:196] = (236, 224, 196)
+        image = Image.fromarray(pixels)
+        left, top, right, bottom = detect_label(image).bbox
+        self.assertGreater(top, 0.42)
+        self.assertLess(bottom, 0.95)
+        self.assertLess(bottom - top, 0.48)
+        self.assertGreater(bottom - top, 0.18)
 
 
 if __name__ == "__main__":

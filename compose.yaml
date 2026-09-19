@@ -20,6 +20,8 @@ services:
     environment:
       DATABASE_URL: postgresql://scanner:${POSTGRES_PASSWORD}@db:5432/scanner
       CATALOG_CSV: /catalog/strapi_output0709_enriched.csv
+      CATALOG_IMAGES: /catalog/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads
+      CATALOG_LABEL_CROPS: /catalog/label-crops
       STATIC_DIR: /app/public
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       CV_ENABLED: "true"

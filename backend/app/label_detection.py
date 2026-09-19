@@ -39,6 +39,14 @@ def _mean(integral: np.ndarray, left: int, top: int, right: int, bottom: int) ->
     ) / area
 
 
+def _studio_background(pixels: np.ndarray) -> np.ndarray:
+    red, green, blue = pixels[:, :, 0], pixels[:, :, 1], pixels[:, :, 2]
+    value = np.maximum(np.maximum(red, green), blue)
+    minimum = np.minimum(np.minimum(red, green), blue)
+    saturation = np.where(value > 1e-4, 1.0 - minimum / np.maximum(value, 1e-4), 0.0)
+    return (value > 0.86) & (saturation < 0.10)
+
+
 def _paper_mask(pixels: np.ndarray) -> np.ndarray:
     red, green, blue = pixels[:, :, 0], pixels[:, :, 1], pixels[:, :, 2]
     value = np.maximum(np.maximum(red, green), blue)
@@ -54,6 +62,106 @@ def _dilate(mask: np.ndarray, radius: int) -> np.ndarray:
     size = radius * 2 + 1
     image = Image.fromarray((mask.astype(np.uint8) * 255))
     return np.asarray(image.filter(ImageFilter.MaxFilter(size))) > 127
+
+
+def _erode(mask: np.ndarray, radius: int) -> np.ndarray:
+    size = radius * 2 + 1
+    image = Image.fromarray((mask.astype(np.uint8) * 255))
+    return np.asarray(image.filter(ImageFilter.MinFilter(size))) > 127
+
+
+def _close(mask: np.ndarray, radius: int) -> np.ndarray:
+    return _erode(_dilate(mask, radius), max(1, radius - 1))
+
+
+def _smooth(values: np.ndarray, window: int) -> np.ndarray:
+    window = max(3, window | 1)
+    kernel = np.ones(window, dtype=np.float32) / window
+    return np.convolve(values.astype(np.float32), kernel, mode="same")
+
+
+def _longest_run(flags: np.ndarray) -> Tuple[int, int]:
+    best = (0, 0)
+    start = None
+    for index, on in enumerate(flags):
+        if on and start is None:
+            start = index
+        elif not on and start is not None:
+            if index - start > best[1] - best[0]:
+                best = (start, index)
+            start = None
+    if start is not None and len(flags) - start > best[1] - best[0]:
+        best = (start, len(flags))
+    return best
+
+
+def _run_containing(flags: np.ndarray, index: int) -> Tuple[int, int]:
+    if index < 0 or index >= len(flags) or not flags[index]:
+        return _longest_run(flags)
+    start = index
+    while start > 0 and flags[start - 1]:
+        start -= 1
+    end = index + 1
+    while end < len(flags) and flags[end]:
+        end += 1
+    return start, end
+
+
+def _paper_band_box(mask: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+    """Front paper panel from the bottle base up, stopping before glass."""
+
+    height, width = mask.shape
+    row = _smooth(mask.mean(axis=1), max(7, height // 35))
+    bottom = int(height) - 1
+    while bottom > height * 0.35 and row[bottom] < 0.12:
+        bottom -= 1
+    if row[bottom] < 0.12:
+        return None
+    top = bottom
+    min_span = int(height * (0.22 if height >= width * 1.7 else 0.12))
+    max_span = int(height * (0.50 if height >= width * 1.7 else 0.55))
+    while top > int(height * 0.06) and bottom - top < max_span:
+        candidate = top - 1
+        span = bottom - candidate
+        if span >= min_span and row[candidate] < 0.25:
+            y = candidate
+            while y > 0 and row[y] < 0.30:
+                y -= 1
+            peak_end = y
+            while y > 0 and row[y] >= 0.28:
+                y -= 1
+            if peak_end - y > height * 0.14:
+                break
+        if span >= min_span and row[candidate] < 0.14:
+            break
+        top = candidate
+    probe_from = max(int(height * 0.08), top - height // 10)
+    header_top = top
+    y = top
+    while y > probe_from and row[y - 1] < 0.30:
+        y -= 1
+    skipped = top - y
+    if 0 < skipped <= max(16, height // 20):
+        header_bottom = y
+        while y > probe_from and row[y - 1] >= 0.30:
+            y -= 1
+        header_len = header_bottom - y
+        if height * 0.05 < header_len < height * 0.16:
+            header_top = y
+    top = header_top
+    if bottom - top < height * 0.08 or bottom - top > height * 0.62:
+        return None
+    band = mask[top:bottom]
+    col = _smooth(band.mean(axis=0), max(5, width // 28))
+    cpeak = float(col.max())
+    if cpeak < 0.12:
+        return None
+    left, right = _run_containing(col >= max(0.08, cpeak * 0.22), int(col.argmax()))
+    if right - left < width * 0.28:
+        return None
+    if left > width * 0.28:
+        return None
+    return left, top, right, bottom
 
 
 def _clear_border(mask: np.ndarray) -> np.ndarray:
@@ -81,7 +189,7 @@ def _clear_border(mask: np.ndarray) -> np.ndarray:
     return keep
 
 
-def _frame_like(box: Sequence[int], width: int, height: int) -> bool:
+def _frame_like(box: Sequence[int], width: int, height: int, *, allow_wide: bool = False) -> bool:
     left, top, right, bottom = box
     area = (right - left) * (bottom - top) / max(1, width * height)
     touches = (
@@ -90,7 +198,8 @@ def _frame_like(box: Sequence[int], width: int, height: int) -> bool:
         + int(right >= width - 2)
         + int(bottom >= height - 2)
     )
-    return area > 0.48 or touches >= 3 or (right - left) / width > 0.82
+    too_wide = (not allow_wide) and (right - left) / width > 0.82
+    return area > 0.48 or touches >= 3 or too_wide
 
 
 def _label_components(mask: np.ndarray) -> List[Tuple[int, int, int, int, int]]:
@@ -275,13 +384,13 @@ def _expand_to_paper(mask: np.ndarray, box: Sequence[int]) -> Tuple[int, int, in
     return left, top, right, bottom
 
 
-def _cover_and_trim(mask: np.ndarray, box: Sequence[int]) -> Tuple[int, int, int, int]:
+def _cover_and_trim(mask: np.ndarray, box: Sequence[int], extra: float = 0.4) -> Tuple[int, int, int, int]:
     """Snap to the cream panel: pull in missing brand line, drop empty glass."""
 
     height, width = mask.shape
     left, top, right, bottom = [int(value) for value in box]
-    extra_x = max(10, round((right - left) * 0.4))
-    extra_y = max(8, round((bottom - top) * 0.22))
+    extra_x = max(8, round((right - left) * extra))
+    extra_y = max(6, round((bottom - top) * extra * 0.6))
     search_left = max(0, left - extra_x)
     search_top = max(0, top - extra_y)
     search_right = min(width, right + extra_x)
@@ -477,7 +586,7 @@ def detect_label(image: Image.Image) -> LabelDetection:
     prepared.thumbnail((720, 960), Image.Resampling.BILINEAR)
     pixels = np.asarray(prepared, dtype=np.float32) / 255.0
     gray = pixels.mean(axis=2)
-    paper = _paper_mask(pixels)
+    paper = _paper_mask(pixels) & np.logical_not(_studio_background(pixels))
     height, width = gray.shape
     small_size = (max(48, width // 6), max(64, height // 6))
     small_paper = np.array(
@@ -489,7 +598,10 @@ def detect_label(image: Image.Image) -> LabelDetection:
     interior = np.array(
         Image.fromarray(interior_small.astype(np.uint8) * 255).resize((width, height), Image.Resampling.NEAREST)
     ) > 127
-    filled = interior
+    closed = _close(paper, 6)
+    if float(closed.mean()) < 0.012:
+        closed = _close(_paper_mask(pixels), 6)
+    filled = np.maximum(interior, closed)
     edge = np.zeros_like(gray)
     edge[:, 1:] += np.abs(gray[:, 1:] - gray[:, :-1])
     edge[1:, :] += np.abs(gray[1:, :] - gray[:-1, :])
@@ -543,28 +655,41 @@ def detect_label(image: Image.Image) -> LabelDetection:
             best_box = box
             method = "paper_panel"
 
-    for box in _grid_boxes(width, height):
-        if _frame_like(box, width, height):
-            continue
-        score = score_box(box)
-        if score > best_score:
-            best_score = score
-            best_box = box
-            method = "label_panel"
+    tall_packshot = height >= width * 1.7
+    band = _paper_band_box(closed)
+    if band and not _frame_like(band, width, height, allow_wide=True):
+        score = score_box(band) + (0.45 if tall_packshot else 0.08)
+        if score > best_score or tall_packshot:
+            best_score = max(score, best_score)
+            best_box = band
+            method = "paper_band"
+    if method != "paper_band" or not tall_packshot:
+        for box in _grid_boxes(width, height):
+            if _frame_like(box, width, height):
+                continue
+            score = score_box(box)
+            if score > best_score:
+                best_score = score
+                best_box = box
+                method = "label_panel"
 
-    best_box = _expand_to_paper(filled, best_box)
-    best_box = _cover_and_trim(filled, best_box)
-    if _frame_like(best_box, width, height):
-        best_box = (
-            round(width * 0.28),
-            round(height * 0.22),
-            round(width * 0.72),
-            round(height * 0.78),
-        )
-        best_box = _cover_and_trim(filled, best_box)
+    if method != "paper_band":
+        best_box = _expand_to_paper(filled, best_box)
+        best_box = _cover_and_trim(closed, best_box, extra=0.35)
+        if _frame_like(best_box, width, height):
+            best_box = (
+                round(width * 0.28),
+                round(height * 0.22),
+                round(width * 0.72),
+                round(height * 0.78),
+            )
+            best_box = _cover_and_trim(filled, best_box)
     left, top, right, bottom = best_box
     pad_x = max(0.01, (right - left) / width * 0.03)
     pad_y = max(0.01, (bottom - top) / height * 0.03)
+    if method == "paper_band":
+        pad_x = max(0.07, (right - left) / width * 0.08)
+        pad_y = max(0.012, (bottom - top) / height * 0.02)
     result = (
         max(0.0, left / width - pad_x),
         max(0.0, top / height - pad_y),
@@ -573,9 +698,13 @@ def detect_label(image: Image.Image) -> LabelDetection:
     )
     if (result[2] - result[0]) * (result[3] - result[1]) > 0.82:
         result = (left / width, top / height, right / width, bottom / height)
-    pixel_quad = _quad_from_mask(filled, (left, top, right, bottom))
+    pixel_quad = None if tall_packshot else _quad_from_mask(closed, (left, top, right, bottom))
     quad = None
     method_name = method
+    if pixel_quad:
+        quad_h = max(point[1] for point in pixel_quad) - min(point[1] for point in pixel_quad)
+        if height > width * 1.45 and quad_h > height * 0.55:
+            pixel_quad = None
     if pixel_quad:
         quad = (
             (pixel_quad[0][0] / width, pixel_quad[0][1] / height),

@@ -357,13 +357,48 @@ class Recognizer:
             return cached
         preview = None
         try:
-            image = self._load_catalog_image(wine)
-            if image is not None:
-                preview = self._preview_jpeg(crop_label(image, detect_label(image)))
+            stored = self._load_stored_label_crop(wine)
+            if stored is not None:
+                preview = self._preview_jpeg(stored)
+            else:
+                image = self._load_catalog_image(wine)
+                if image is not None:
+                    preview = self._preview_jpeg(crop_label(image, detect_label(image)))
         except Exception:
             logging.exception("Could not build catalog label preview for %s", wine.slug)
         self._catalog_crop_cache[wine.slug] = preview
         return preview
+
+    def _load_stored_label_crop(self, wine):
+        from pathlib import Path
+
+        from PIL import Image, ImageOps
+
+        folder = Path(os.getenv("CATALOG_LABEL_CROPS", "/catalog/label-crops"))
+        path = folder / f"{wine.slug}.jpg"
+        if not path.is_file():
+            return None
+        with Image.open(path) as opened:
+            return ImageOps.exif_transpose(opened).convert("RGB")
+
+    def _catalog_file_names(self, wine) -> List[str]:
+        from urllib.parse import unquote, urlparse
+        from pathlib import Path
+
+        names = []
+        image_name = str(getattr(wine, "image_name", "") or "").strip()
+        if image_name:
+            names.append(Path(image_name).name)
+        url = str(getattr(wine, "image_url", "") or getattr(wine, "direct_image_url", "") or "")
+        if url:
+            names.append(unquote(Path(urlparse(url).path).name))
+        seen = set()
+        unique = []
+        for name in names:
+            if name and name not in seen:
+                seen.add(name)
+                unique.append(name)
+        return unique
 
     def _load_catalog_image(self, wine):
         from pathlib import Path
@@ -371,7 +406,7 @@ class Recognizer:
 
         from PIL import Image, ImageOps
 
-        name = str(getattr(wine, "image_name", "") or "")
+        names = self._catalog_file_names(wine)
         folders = []
         extra = os.getenv("CATALOG_IMAGES", "").strip()
         if extra:
@@ -379,12 +414,22 @@ class Recognizer:
         catalog = os.getenv("CATALOG_CSV", "").strip()
         if catalog:
             parent = Path(catalog).parent
-            folders.extend((parent, parent / "uploads"))
+            folders.extend((parent, parent / "uploads", parent / "prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads"))
         for folder in folders:
-            path = folder / name if name else folder
-            if name and path.is_file():
-                with Image.open(path) as opened:
-                    return ImageOps.exif_transpose(opened).convert("RGB")
+            if not folder.is_dir():
+                continue
+            for name in names:
+                path = folder / name
+                if path.is_file():
+                    with Image.open(path) as opened:
+                        return ImageOps.exif_transpose(opened).convert("RGB")
+        root = Path("/catalog")
+        if names and root.is_dir():
+            for name in names:
+                match = next(root.rglob(name), None)
+                if match and match.is_file():
+                    with Image.open(match) as opened:
+                        return ImageOps.exif_transpose(opened).convert("RGB")
         url = wine.image_url
         if not url or not url.startswith("http"):
             return None
