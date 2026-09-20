@@ -114,12 +114,18 @@ def main():
     if not extra_root and (not args.images or not args.images.is_dir()):
         raise ValueError('--images must point to the local catalog uploads directory')
     from .vision import ImageEncoder, MODEL_ID
+    print(json.dumps({'loading_encoder': True}), flush=True)
     encoder = ImageEncoder()
+    print(json.dumps({'encoder_ready': True, 'model': MODEL_ID}), flush=True)
     pending, skipped, missing = [], 0, []
     root = args.images.resolve() if args.images and args.images.is_dir() else extra_root
     with connect() as db:
         existing = {(r['slug'], r['image_hash']): r for r in db.execute('SELECT slug, image_hash, model FROM wine_embeddings')}
+    scanned = 0
     for wine in wines:
+        scanned += 1
+        if scanned == 1 or scanned % 200 == 0:
+            print(json.dumps({'scanning': scanned, 'total': len(wines), 'pending': len(pending)}), flush=True)
         filename = unquote(Path(urlparse(wine.direct_image_url or '').path).name) or wine.image_name
         files = []
         if args.images and args.images.is_dir():
@@ -146,6 +152,7 @@ def main():
                     skipped += 1
                     continue
                 pending.append((wine.slug, path, view_digest, kind))
+    print(json.dumps({'pending': len(pending), 'skipped': skipped, 'missing': len(missing), 'force_crops': args.force_crops}), flush=True)
     processed, failed = 0, []
     for offset in range(0, len(pending), args.batch_size):
         batch, images = [], []
@@ -160,12 +167,16 @@ def main():
                         continue
                     rgb = cropped
                     if args.save_crops:
-                        args.save_crops.mkdir(parents=True, exist_ok=True)
-                        rgb.convert('RGB').save(args.save_crops / f'{item[0]}.jpg', quality=92)
+                        try:
+                            args.save_crops.mkdir(parents=True, exist_ok=True)
+                            rgb.convert('RGB').save(args.save_crops / f'{item[0]}.jpg', quality=92)
+                        except Exception as exc:
+                            print(json.dumps({'save_failed': item[0], 'error': str(exc)[:200]}), flush=True)
                 images.append(rgb)
                 batch.append(item)
-            except Exception:
+            except Exception as exc:
                 failed.append(item[0])
+                print(json.dumps({'failed': item[0], 'kind': item[3], 'error': str(exc)[:200]}), flush=True)
         if not images:
             continue
         vectors = encoder.encode(images)
