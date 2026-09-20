@@ -400,58 +400,6 @@ body{background:#fffdfb}
 .alt-card strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin:3px 0;min-height:2.5em;font-size:13px;line-height:1.25}
 @media(max-width:720px){.after-search{padding:20px 16px}.alt-grid{grid-template-columns:1fr}.alt-card{min-height:0}}
 
-/* Compact result card: bottle + facts on one screen. */
-#result-screen .result-top{margin-bottom:12px}
-#result-screen .result-layout{display:flex;flex-direction:column;gap:12px}
-#result-screen .wine-hero{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px 12px;padding:12px 44px 14px 12px;border-radius:20px;background:#f6f1e8;position:relative;align-items:stretch}
-#result-screen .wine-portrait{height:auto;min-height:160px;border-radius:0;background:transparent}
-#result-screen .wine-portrait img{height:100%;width:100%;max-height:176px;object-fit:contain;mix-blend-mode:multiply}
-#result-screen .portrait-save{top:8px;right:8px;width:40px;height:40px;box-shadow:0 4px 12px #48332d14}
-#result-screen .portrait-save svg{width:18px;height:18px}
-#result-screen .wine-details{padding:2px 0 0}
-#result-screen .wine-details .eyebrow{margin-bottom:4px}
-#result-screen .wine-details h1{font-size:26px;letter-spacing:-.6px;line-height:1.15}
-#result-screen .wine-category{margin:4px 0 10px;font-size:13px}
-#result-screen .catalog-visuals{margin:0}
-#result-screen .visual-facts{gap:8px}
-#result-screen .visual-fact{min-height:52px;padding:5px 10px 5px 5px;border-radius:12px}
-#result-screen .visual-fact img{width:38px;height:38px;border-radius:8px}
-#result-screen .visual-fact-color{padding:8px 10px}
-#result-screen .wine-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 10px;margin-top:10px;padding-top:10px}
-#result-screen .wine-facts span{font-size:12px;min-width:0}
-#result-screen .rating-combo{margin:0;padding:12px 14px;border-radius:18px}
-#result-screen .fit-card{margin-top:0;padding:12px 14px}
-#result-screen .result-split{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:12px;align-items:start}
-#result-screen .taste-profile{margin-top:0;padding-top:0;border:0}
-#result-screen .taste-profile-heading{margin-bottom:8px}
-#result-screen .taste-profile-heading h2,#result-screen .dish-pairings-heading h2{font-size:22px}
-#result-screen .taste-row{margin:8px 0}
-#result-screen .wine-summary{margin:10px 0 0;font-size:14px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
-#result-screen .taste-tags{margin:10px 0 0;gap:6px}
-#result-screen .taste-tags span{padding:5px 10px;font-size:11px}
-#result-screen .dish-pairings{margin-top:0;padding:14px}
-#result-screen .dish-pairings-heading{margin-bottom:10px}
-#result-screen .dish-card{min-height:56px;padding:6px 8px}
-#result-screen .dish-card img,#result-screen .dish-placeholder{width:44px;height:44px;flex-basis:44px}
-#result-screen .result-actions{margin-top:4px}
-@media(max-width:1000px){
-  #result-screen .wine-portrait{min-height:160px}
-  #result-screen .wine-portrait img{height:100%;max-height:200px}
-  #result-screen .wine-details h1{font-size:26px}
-}
-@media(max-width:720px){
-  #result-screen .result-layout{gap:10px}
-  #result-screen .wine-hero{grid-template-columns:78px minmax(0,1fr);padding:10px 40px 12px 10px;gap:8px 10px}
-  #result-screen .wine-portrait{min-height:140px}
-  #result-screen .wine-portrait img{max-height:180px}
-  #result-screen .wine-details h1{font-size:22px}
-  #result-screen .wine-category{font-size:12px;margin:3px 0 8px}
-  #result-screen .result-split{grid-template-columns:1fr;gap:10px}
-  #result-screen .taste-profile-heading h2,#result-screen .dish-pairings-heading h2{font-size:20px}
-  #result-screen .dish-pairings{padding:12px}
-  #result-screen .portrait-save{width:36px;height:36px;top:6px;right:6px}
-}
-
 @media(min-width:900px){
   main{padding-top:12px}
   .admin-tools{max-width:980px;margin:0 auto 10px;padding:8px 14px}
@@ -471,20 +419,7 @@ body{background:#fffdfb}
   .site-footer{margin-top:24px;padding:18px 32px 28px}
   .footer-meta{min-height:72px;padding-top:14px}
 
-  #result-screen{max-width:1120px;margin:0 auto}
-  #result-screen .result-top{margin-bottom:8px}
-  #result-screen .result-layout{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);grid-template-areas:"hero split" "rating split" "actions split" "fit split";gap:10px 16px;align-items:start}
-  #result-screen .wine-hero{grid-area:hero;grid-template-columns:108px minmax(0,1fr);padding:12px 48px 12px 12px}
-  #result-screen .wine-portrait{min-height:148px}
-  #result-screen .wine-portrait img{max-height:168px}
-  #result-screen .wine-details h1{font-size:28px}
-  #result-screen .rating-combo{grid-area:rating}
-  #result-screen .fit-card{grid-area:fit}
-  #result-screen .result-split{grid-area:split;grid-template-columns:1fr;gap:10px}
-  #result-screen .result-actions{grid-area:actions;flex-direction:row;margin-top:0;gap:8px}
-  #result-screen .result-actions .button{width:auto;flex:1}
-  #result-screen .after-search{margin-top:14px;padding:16px 18px}
-  #result-screen .alt-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+
 }
 
 
@@ -492,3 +427,107 @@ body{background:#fffdfb}
 .label-cutout.revealing{overflow:visible;animation:none;border-radius:0}
 .label-cutout.revealing>img,.label-cutout.revealing>span{display:none}
 .label-cutout canvas{display:block;width:100%;height:100%;object-fit:contain}
+
+/* Product-first wine card. The bottle source includes wide transparent margins:
+   size it by height instead of squeezing the source canvas into the left column. */
+#result-screen{max-width:1120px;margin:0 auto}
+#result-screen .result-top{margin-bottom:10px}
+#result-screen .result-layout{display:flex;flex-direction:column;gap:14px}
+#result-screen .wine-hero{position:relative;isolation:isolate;display:grid;grid-template-columns:minmax(0,.65fr) minmax(0,1fr);grid-template-rows:1fr auto;column-gap:24px;min-height:440px;padding:32px 32px 28px 0;border-radius:28px;background:#f6f1e8;overflow:hidden}
+#result-screen .wine-portrait{grid-row:1 / 3;align-self:stretch;min-height:380px;height:auto;background:transparent;border-radius:0;isolation:isolate;overflow:hidden}
+#result-screen .wine-portrait::after{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,#f6f1e826 25%,#f6f1e8 100%),linear-gradient(0deg,#f6f1e8 0%,#f6f1e800 16%,#f6f1e800 50%,#f6f1e8 100%);pointer-events:none}
+#result-screen .wine-portrait .wine-grape-backdrop{position:absolute;inset:0;z-index:-2;width:100%;height:100%;max-height:none;object-fit:cover;object-position:45% center;opacity:.55;mix-blend-mode:normal}
+#result-screen .wine-portrait .wine-bottle{position:absolute;top:0;left:50%;transform:translateX(-50%);width:auto;height:100%;max-width:none;max-height:none;object-fit:contain;mix-blend-mode:normal;filter:drop-shadow(7px 10px 7px #3b292225)}
+#result-screen .wine-portrait>span{padding:20px;color:var(--muted);font-size:13px}
+#result-screen .wine-details{min-width:0;padding:8px 0 0}
+#result-screen .wine-details .eyebrow{margin:0 42px 10px 0;font-size:12px;letter-spacing:1.3px}
+#result-screen .wine-details h1{font:400 clamp(30px,3.4vw,44px)/1.08 Georgia,serif;letter-spacing:-1px;overflow-wrap:anywhere}
+.wine-title-cuvee{display:block;font-size:.8em;margin-top:5px;letter-spacing:-.4px}
+#result-screen .wine-category{margin:10px 0 18px;font-size:15px;line-height:1.4}
+#result-screen .portrait-save{top:16px;right:16px;width:42px;height:42px;box-shadow:0 4px 18px #48332d0a}
+#result-screen .portrait-save svg{width:20px;height:20px}
+#result-screen .public-rating{margin-bottom:22px}
+#result-screen .public-rating-badge{gap:9px;padding:7px 15px 7px 10px;border-radius:30px;background:#f1e5cbb3}
+#result-screen .public-rating-badge span{font-size:23px;line-height:1.3}
+#result-screen .public-rating-badge small{font-size:11px;color:#827361;line-height:1.2}
+.rating-glass{width:24px;height:32px;stroke-width:1.3;color:#825452;flex:none}
+.glass-wine{fill:var(--wine);stroke:none;opacity:0;transition:opacity .15s}
+.public-rating-badge .glass-wine,.rating-option.filled .glass-wine{opacity:1}
+#result-screen .catalog-visuals{margin:0}
+#result-screen .visual-facts{display:grid;grid-template-columns:1.1fr 1fr;gap:10px}
+#result-screen .visual-fact{min-width:0;min-height:72px;gap:10px;padding:10px;border:0;border-radius:16px;background:#fffdfbc9}
+#result-screen .visual-fact img{width:44px;height:44px;border-radius:11px;flex:none}
+#result-screen .visual-fact small{font-size:10px;margin-bottom:4px}
+#result-screen .visual-fact strong{font-size:14px;font-weight:500;overflow-wrap:anywhere}
+#result-screen .visual-fact-color{padding:12px 16px}
+#result-screen .visual-fact-color.color-tone-red{background:#78313a;color:#fff6ee}
+#result-screen .visual-fact-color.color-tone-white{background:#eadfbe;color:#3a342c}
+#result-screen .visual-fact-color.color-tone-orange{background:#c8793c;color:#fff7ee}
+#result-screen .visual-fact-color.color-tone-rose{background:#d9959c;color:#3a2428}
+#result-screen .wine-facts{grid-column:2;display:flex;flex-wrap:wrap;gap:16px 0;margin:22px 0 0;padding:18px 0 0;border-top:1px solid #e1d9cc}
+#result-screen .wine-facts>span{flex:1 1 28%;min-width:0;padding:0 14px;border-left:1px solid #e1d9cc;font-size:15px;line-height:1.35;overflow-wrap:anywhere}
+#result-screen .wine-facts>span:first-child{padding-left:0;border:0}
+#result-screen .wine-facts small{font-size:10px;letter-spacing:.4px;margin-bottom:7px}
+#result-screen .result-actions{display:flex;flex-direction:row;gap:10px;margin:0}
+#result-screen .result-actions .button{flex:1;min-width:0;width:auto;min-height:48px;padding:10px 12px;font-size:14px;border-radius:16px;background:#fffdfb}
+#result-screen .fit-card{margin:0}
+#result-screen .result-split{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:14px;align-items:start}
+#result-screen .result-taste{padding:24px;border-radius:24px;background:#f6f1e8}
+#result-screen .taste-profile{margin:0;padding:0;border:0}
+#result-screen .taste-profile-heading{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-bottom:18px}
+#result-screen .taste-profile-heading h2,#result-screen .dish-pairings-heading h2{font-size:27px}
+#result-screen .taste-profile-heading span{font-size:12px;white-space:normal}
+#result-screen .taste-row{margin:13px 0}
+#result-screen .rating-combo{display:block;margin:16px 0 0;padding:12px 0 0;border-top:1px solid #e1d9cc;border-radius:0;background:none}
+#result-screen .user-rating{display:flex;flex-direction:row;justify-content:space-between;gap:8px}
+#result-screen .user-rating-cta{padding:0;margin:0;background:none;text-align:left;font:12px/1.4 var(--font);color:var(--muted)}
+#result-screen .rating-option{display:grid;place-items:center;width:38px;height:44px;padding:4px;border-radius:10px}
+#result-screen .rating-option .rating-glass{width:25px;height:34px}
+#result-screen .rating-options:hover .rating-option{background:transparent}
+@media(hover:hover){
+  #result-screen .rating-option:hover{background:#eadfce}
+  #result-screen .rating-options:hover .glass-wine{opacity:1}
+  #result-screen .rating-options .rating-option:hover ~ .rating-option .glass-wine{opacity:0}
+}
+#result-screen .wine-summary{margin:14px 0 0;font-size:13px;line-height:1.65;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+#result-screen .taste-tags{margin:14px 0 0;gap:6px}
+#result-screen .taste-tags span{padding:7px 12px;font-size:11px;background:#fffdfbc9}
+#result-screen .dish-pairings{margin:0;padding:24px;border-radius:24px}
+#result-screen .dish-pairings-heading{flex-wrap:wrap;gap:6px}
+#result-screen .after-search{margin-top:18px}
+@media(max-width:720px){
+  body:has(#result-screen:not([hidden])) main{padding-top:16px}
+  #result-screen .result-layout{gap:10px}
+  #result-screen .wine-hero{grid-template-columns:38% minmax(0,1fr);column-gap:8px;min-height:0;padding:20px 14px 16px 0;border-radius:22px}
+  #result-screen .wine-portrait{grid-row:1;min-height:270px;margin:-8px 0 -4px}
+  #result-screen .wine-details{padding:15px 0 0}
+  #result-screen .wine-details .eyebrow{margin:0 20px 8px 0;font-size:9px;letter-spacing:.8px}
+  #result-screen .wine-details h1{font-size:clamp(23px,5.8vw,34px);letter-spacing:-.65px}
+  #result-screen .wine-category{font-size:11px;margin:8px 0 12px}
+  #result-screen .portrait-save{width:32px;height:32px;top:8px;right:8px}
+  #result-screen .portrait-save svg{width:16px;height:16px}
+  #result-screen .public-rating{margin-bottom:14px}
+  #result-screen .public-rating-badge{gap:6px;padding:5px 10px 5px 7px}
+  #result-screen .public-rating-badge span{font-size:19px}
+  #result-screen .public-rating-badge small{font-size:9px;max-width:55px}
+  #result-screen .public-rating-badge .rating-glass{width:19px;height:27px}
+  #result-screen .visual-facts{grid-template-columns:1fr;gap:7px}
+  #result-screen .visual-fact{min-height:45px;padding:7px 9px;border-radius:11px;gap:8px}
+  #result-screen .visual-fact img{width:32px;height:32px;border-radius:8px}
+  #result-screen .visual-fact small{font-size:8px;margin-bottom:2px}
+  #result-screen .visual-fact strong{font-size:11px}
+  #result-screen .visual-fact-color{min-height:43px;padding:7px 11px}
+  #result-screen .wine-facts{grid-column:1 / -1;margin:18px 0 0 16px;padding-top:14px;gap:12px 0}
+  #result-screen .wine-facts>span{font-size:12px;padding:0 10px}
+  #result-screen .wine-facts small{font-size:8px;margin-bottom:5px}
+  #result-screen .result-actions .button{min-height:46px;font-size:11px;padding:9px 7px;gap:7px;border-radius:13px}
+  #result-screen .result-actions .button svg,#result-screen .result-actions .icon-compare{width:19px;height:19px;flex:none}
+  #result-screen .result-split{grid-template-columns:1fr;gap:10px}
+  #result-screen .result-taste,#result-screen .dish-pairings{padding:18px 16px;border-radius:22px}
+  #result-screen .taste-profile-heading{margin-bottom:16px}
+  #result-screen .taste-profile-heading h2,#result-screen .dish-pairings-heading h2{font-size:24px}
+  #result-screen .taste-profile-heading span{font-size:10px}
+  #result-screen .taste-row{margin:12px 0}
+  #result-screen .rating-option{width:34px}
+}
+@media(prefers-reduced-motion:reduce){.glass-wine{transition:none}}

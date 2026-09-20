@@ -1,0 +1,56 @@
+[
+  {
+    "variety": "каберне совиньон",
+    "file": "public/assets/catalog/grape-cabernet-sauvignon.webp",
+    "source": "https://vino-svoe.ru/wines/kaberne-sovinon-appasimento",
+    "image": "https://api.vino-svoe.ru/v1/img/str-api/740/740/resize/uploads/Kaberne_Sovinon3_39f7936b80.webp"
+  },
+  {
+    "variety": "каберне фран",
+    "file": "public/assets/catalog/grape-cabernet-franc.webp",
+    "source": "Provided by the site owner",
+    "image": "https://api.vino-svoe.ru/v1/img/str-api/740/740/resize/uploads/Kaberne_Fran2_fc0347f0c7.webp"
+  },
+  {
+    "variety": "красностоп",
+    "file": "public/assets/catalog/grape-krasnostop.webp",
+    "source": "Provided by the site owner",
+    "image": "https://api.vino-svoe.ru/v1/img/str-api/740/740/resize/uploads/Krasnostop_876941a1ad.webp"
+  },
+  {
+    "variety": "шардоне",
+    "file": "public/assets/catalog/grape-chardonnay.webp",
+    "source": "https://vino-svoe.ru/wines/fanagoriya-100-ottenkov-shardone-beloe-suhoe-14",
+    "image": "https://api.vino-svoe.ru/v1/img/str-api/740/740/resize/uploads/Shardone_2_03e3197a65.webp"
+  },
+  {
+    "variety": "мерло",
+    "file": "public/assets/catalog/grape-merlot.webp",
+    "source": "https://vino-svoe.ru/wines/olymp-winery-adagum-estate-merlot-merlo-krasnoe-suhoe-11",
+    "image": "https://api.vino-svoe.ru/v1/img/str-api/740/740/resize/uploads/Merlo2_92c9fc8a90.webp"
+  },
+  {
+    "variety": "совиньон блан",
+    "file": "public/assets/catalog/grape-sauvignon-blanc.webp",
+    "source": "https://vino-svoe.ru/wines/usadba-rodnoe-gnezdo-4-elements-sovinon-blan-beloe-polusladkoe-12",
+    "image": "https://api.vino-svoe.ru/v1/img/str-api/740/740/resize/uploads/Sovinon_Blan_e82f684de6.webp"
+  },
+  {
+    "variety": "пино нуар",
+    "file": "public/assets/catalog/grape-pinot-noir.webp",
+    "source": "https://vino-svoe.ru/wines/fanagoriya-100-ottenkov-krasnogo-pino-nuar-krasnoe-suhoe-135",
+    "image": "https://api.vino-svoe.ru/v1/img/str-api/740/740/resize/uploads/Pino_Nuar3_8f666dc69e.webp"
+  },
+  {
+    "variety": "рислинг",
+    "file": "public/assets/catalog/grape-riesling.webp",
+    "source": "https://vino-svoe.ru/wines/usadba-rodnoe-gnezdo-4-elements-risling-beloe-suhoe-12",
+    "image": "https://api.vino-svoe.ru/v1/img/str-api/740/740/resize/uploads/Risling2_c6fa370506.webp"
+  },
+  {
+    "variety": "саперави",
+    "file": "public/assets/catalog/grape-saperavi.webp",
+    "source": "https://vino-svoe.ru/wines/fanagoriya-100-ottenkov-krasnogo-saperavi-krasnoe-suhoe-14",
+    "image": "https://api.vino-svoe.ru/v1/img/str-api/740/740/resize/uploads/Saperavi3_973cb28f6e.webp"
+  }
+]

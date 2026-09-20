@@ -27,6 +27,15 @@ const catalogAssets = {
     'кубань': '/assets/catalog/region-kuban.webp'
   },
   grape: {
+    'шардоне': '/assets/catalog/grape-chardonnay.webp',
+    'мерло': '/assets/catalog/grape-merlot.webp',
+    'совиньон блан': '/assets/catalog/grape-sauvignon-blanc.webp',
+    'пино нуар': '/assets/catalog/grape-pinot-noir.webp',
+    'рислинг': '/assets/catalog/grape-riesling.webp',
+    'саперави': '/assets/catalog/grape-saperavi.webp',
+    'каберне совиньон': '/assets/catalog/grape-cabernet-sauvignon.webp',
+    'каберне фран': '/assets/catalog/grape-cabernet-franc.webp',
+    'красностоп': '/assets/catalog/grape-krasnostop.webp',
     'мальвазия': '/assets/catalog/grape-malvaziya.webp',
     'первенец магарача': '/assets/catalog/grape-pervenets-magaracha.webp'
   },
@@ -71,6 +80,24 @@ function catalogAsset(type, value) {
   if (assets[normalized]) return safeImage(assets[normalized]);
   const key = Object.keys(assets).find(candidate => normalized.includes(candidate) || candidate.includes(normalized));
   return key ? safeImage(assets[key]) : '';
+}
+// Prefer the wine's catalog photo; only use a matching variety as fallback.
+function grapeBackdrop(wine, grapes) {
+  const supplied = safeImage(wine.grape_image_url);
+  if (supplied) {
+    const url = new URL(supplied);
+    if (url.hostname === 'api.vino-svoe.ru') {
+      url.pathname = url.pathname.replace(/\/str-api\/\d+\/\d+\/resize\//, '/str-api/740/740/resize/');
+    }
+    return url.href;
+  }
+  return grapes.map(grape => catalogAsset('grape', grape)).find(Boolean) || '';
+}
+function wineTitle(name) {
+  return escape(name).replace(/\s+(Appassimento)$/i, '<span class="wine-title-cuvee">$1</span>');
+}
+function ratingGlass() {
+  return '<svg class="rating-glass" viewBox="0 0 24 32" aria-hidden="true"><path class="glass-wine" d="M5 12h14l-.5 3a6.6 6.6 0 0 1-13 0z"/><path d="M6 3h12l1 11a7 7 0 0 1-14 0zM12 21v8M7 29h10"/></svg>';
 }
 function inferWineColor(wine) {
   const value = normalizeCatalogValue(`${wine.color || ''} ${wine.category || ''}`);
@@ -793,14 +820,15 @@ function showWine(wine, scanMeta = null, options = {}) {
   const dishes = Array.isArray(wine.dishes) ? wine.dishes.filter(Boolean) : [];
   const grapes = Array.isArray(wine.grapes) ? wine.grapes.filter(Boolean) : (wine.grapes ? [wine.grapes] : []);
   const wineColor = inferWineColor(wine);
+  const grapeImage = grapeBackdrop(wine, grapes);
   const regionImage = catalogAsset('region', wine.region) || safeImage(wine.region_image_url);
   const tasteProfile = deriveTasteProfile(wine);
   const aromaNotes = extractAromaNotes(wine);
   const fitMarkup = fitMarkupFor(wine);
   const scanDebugMarkup = scanMeta ? renderScanDebug(scanMeta) : '';
   const visualFacts = [
-    regionImage ? `<article class="visual-fact"><img src="${escape(regionImage)}" alt="" loading="lazy"><div><small>РЕГИОН</small><strong>${escape(wine.region)}</strong></div></article>` : '',
-    (wine.category || wineColor) ? `<article class="visual-fact visual-fact-color color-tone-${colorTone(wineColor)}"><div><small>КАТЕГОРИЯ</small><strong>${escape(wine.category || 'Категория не указана')}</strong>${wineColor ? `<em>${escape(wineColor)}</em>` : ''}</div></article>` : ''
+    wine.region ? `<article class="visual-fact">${regionImage ? `<img src="${escape(regionImage)}" alt="" loading="lazy">` : ''}<div><small>РЕГИОН</small><strong>${escape(wine.region)}</strong></div></article>` : '',
+    (wine.category || wineColor) ? `<article class="visual-fact visual-fact-color color-tone-${colorTone(wineColor)}"><div><small>КАТЕГОРИЯ</small><strong>${escape(wine.category || 'Категория не указана')}</strong></div></article>` : ''
   ].filter(Boolean).join('');
   const dishImageUrls = Array.isArray(wine.dish_image_urls) ? wine.dish_image_urls : [];
   const dishCards = dishes.map((dish, index) => {
@@ -811,16 +839,18 @@ function showWine(wine, scanMeta = null, options = {}) {
     <div class="result-top"><button class="text-button" id="back-to-scanner">${icon('arrow-left')} К сканеру</button>${wine.demo ? '<span class="demo-badge">Пример карточки · не результат сканирования</span>' : ''}</div>
     ${scanDebugMarkup}
     <div class="result-layout">
-    <div class="wine-hero"><div class="wine-portrait">${image ? `<img src="${escape(image)}" alt="${escape(wine.name)}"/>` : '<span>Фото пока нет</span>'}</div>
-    <div class="wine-details"><p class="eyebrow">${escape(wine.winery)}</p><h1>${escape(wine.name)}</h1><p class="wine-category">${escape(wine.category || '')}${wine.region ? ' · ' + escape(wine.region) : ''}</p>
+    <div class="wine-hero"><div class="wine-portrait">${grapeImage ? `<img class="wine-grape-backdrop" src="${escape(grapeImage)}" alt="" aria-hidden="true">` : ''}${image ? `<img class="wine-bottle" src="${escape(image)}" alt="${escape(wine.name)}" fetchpriority="high"/>` : '<span>Фото пока нет</span>'}</div>
+    <div class="wine-details"><p class="eyebrow">${escape(wine.winery)}</p><h1>${wineTitle(wine.name)}</h1><p class="wine-category">${escape(wine.category || '')}${wine.region ? ' · ' + escape(wine.region) : ''}</p>
+    <div class="public-rating" aria-label="Народный рейтинг ${escape(rating)} из 5"><div class="public-rating-badge">${ratingGlass()}<span>${escape(rating)}</span><small>Народный рейтинг</small></div></div>
     ${visualFacts ? `<section class="catalog-visuals" aria-label="Характеристики из каталога"><div class="visual-facts">${visualFacts}</div></section>` : ''}
-    <div class="wine-facts">${wine.alcohol ? `<span><small>КРЕПОСТЬ</small>${escape(wine.alcohol)}</span>` : ''}${wine.volume ? `<span><small>ОБЪЁМ</small>${escape(wine.volume)}</span>` : ''}${wine.year ? `<span><small>ГОД</small>${escape(wine.year)}</span>` : ''}${wine.temperature ? `<span><small>ПОДАВАТЬ</small>${escape(wine.temperature)}</span>` : ''}${grapes.length ? `<span><small>СОРТ</small>${escape(grapes.join(', '))}</span>` : ''}</div></div>
+    </div><div class="wine-facts">${wine.alcohol ? `<span><small>КРЕПОСТЬ</small>${escape(wine.alcohol)}</span>` : ''}${wine.volume ? `<span><small>ОБЪЁМ</small>${escape(wine.volume)}</span>` : ''}${wine.year ? `<span><small>ГОД</small>${escape(wine.year)}</span>` : ''}${wine.temperature ? `<span><small>ПОДАВАТЬ</small>${escape(wine.temperature)}</span>` : ''}${grapes.length ? `<span><small>СОРТ</small>${escape(grapes.join(', '))}</span>` : ''}</div>
     <button class="portrait-save icon-action" id="save-wine" type="button" aria-label="Сохранить вино">${icon('bookmark')}</button></div>
-    <section class="rating-combo" aria-label="Оценки вина"><div class="public-rating" aria-label="Народный рейтинг ${escape(rating)} из 5"><div class="public-rating-badge"><img src="/assets/public-rating.svg" alt="" width="20" height="20"><span>${escape(rating)}</span></div></div><div class="user-rating" aria-labelledby="user-rating-title"><div class="rating-options" role="radiogroup" aria-label="Оценка вина">${[1,2,3,4,5].map(value => `<button class="rating-option" type="button" role="radio" aria-checked="false" aria-label="${value} из 5" data-user-rating="${value}"><span class="rating-icons"><img class="rating-icon-glass" src="/assets/public-rating-empty.svg" alt="" width="48" height="48"><img class="rating-icon-wine" src="/assets/public-rating-wine-in-glass.svg" alt="" width="48" height="48"></span></button>`).join('')}</div><p class="user-rating-cta" id="user-rating-title">Поставь свою оценку</p><p class="rating-status" id="rating-status" hidden></p></div></section>
+
     <div class="result-actions"><button class="button secondary" id="compare-wine" type="button">${icon('compare')} Сравнить</button><button class="button secondary" id="scan-again">${icon('camera')} Сканировать другое</button></div>
     ${fitMarkup}
     <div class="result-split">
     <div class="result-taste"><section class="taste-profile" aria-labelledby="taste-profile-title"><div class="taste-profile-heading"><h2 id="taste-profile-title">Вкусовые свойства</h2><span>Оценка по данным каталога</span></div>${tasteDimensions.map(({ key, label }) => `<div class="taste-row"><span>${escape(label)}</span><i><em style="width:${tasteProfile[key] * 20}%"></em></i><b>${tasteProfile[key]}/5</b></div>`).join('')}</section>
+    <section class="rating-combo" aria-label="Ваша оценка вина"><div class="user-rating" aria-labelledby="user-rating-title"><p class="user-rating-cta" id="user-rating-title">Поставь свою оценку</p><div class="rating-options" role="radiogroup" aria-label="Оценка вина">${[1,2,3,4,5].map(value => `<button class="rating-option" type="button" role="radio" aria-checked="false" aria-label="${value} из 5" data-user-rating="${value}">${ratingGlass()}</button>`).join('')}</div><p class="rating-status" id="rating-status" hidden></p></div></section>
     <p class="wine-summary">${escape(wine.summary || wine.description || 'Описание пока не добавлено.')}</p><div class="taste-tags">${aromaNotes.map(tag => `<span>${escape(tag)}</span>`).join('')}</div></div>
     ${dishes.length ? `<section class="dish-pairings"><div class="dish-pairings-heading"><div>${icon('utensils')}<h2>Сочетание с блюдами</h2></div><span>Из каталога «Своё Вино»</span></div><div class="dish-grid">${dishCards}</div></section>` : ''}
     </div>
@@ -864,6 +894,12 @@ function showWine(wine, scanMeta = null, options = {}) {
     refreshFitCard();
   };
   document.querySelectorAll('[data-user-rating]').forEach(button => button.onclick = () => setUserRating(Number(button.dataset.userRating)));
+  document.querySelector('.wine-grape-backdrop')?.addEventListener('error', event => event.currentTarget.remove());
+  document.querySelector('.wine-bottle')?.addEventListener('error', event => {
+    const placeholder = document.createElement('span');
+    placeholder.textContent = 'Фото пока нет';
+    event.currentTarget.replaceWith(placeholder);
+  });
   setUserRating(Number(ratings[wine.slug]) || 0, false);
   if (wine.demo) {
     const explanations = {
@@ -1038,7 +1074,7 @@ function refreshFitCard() {
       card.remove();
     }
   } else if (markup) {
-    document.querySelector('.rating-combo')?.insertAdjacentHTML('afterend', markup);
+    document.querySelector('.result-actions')?.insertAdjacentHTML('afterend', markup);
   }
 }
 function renderSaved() {
