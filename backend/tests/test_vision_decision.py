@@ -27,7 +27,7 @@ class VisualDecisionTests(unittest.TestCase):
         result = self.recognizer.recognize(self.photo)
         self.assertEqual(result['status'], 'matched')
         self.assertEqual(result['wine']['slug'], 'a')
-        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .74}, {'slug': 'b', 'score': .60}]
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .74}, {'slug': 'b', 'score': .71}]
         self.assertEqual(self.recognizer.recognize(self.photo)['status'], 'uncertain')
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .80}]
         self.assertEqual(self.recognizer.recognize(self.photo)['slug'], 'a')
@@ -38,6 +38,28 @@ class VisualDecisionTests(unittest.TestCase):
         self.assertEqual(result['status'], 'matched')
         self.assertEqual(result['wine']['slug'], 'a')
         self.assertEqual(result['recognition']['compared_with'][0]['slug'], 'a')
+
+    def test_same_winery_line_does_not_block_match(self):
+        self.recognizer.catalog = WineCatalog.from_rows([
+            {'Slug': 'sikory-sb-reserve', 'Название вина': 'Совиньон Блан. Семейный резерв', 'Винодельня': 'Имение Сикоры', 'Сорт винограда': 'Совиньон Блан'},
+            {'Slug': 'sikory-sb', 'Название вина': 'Совиньон Блан Сикоры', 'Винодельня': 'Имение Сикоры', 'Сорт винограда': 'Совиньон Блан'},
+            {'Slug': 'litav-sb', 'Название вина': 'Совиньон Блан', 'Винодельня': 'Литавщук', 'Сорт винограда': 'Совиньон Блан'},
+        ], 'https://example.com/')
+        self.recognizer.visual.search.return_value = [
+            {'slug': 'sikory-sb-reserve', 'score': .838},
+            {'slug': 'sikory-sb', 'score': .817},
+            {'slug': 'litav-sb', 'score': .799},
+        ]
+        result = self.recognizer.recognize(self.photo)
+        self.assertEqual(result['status'], 'matched')
+        self.assertEqual(result['wine']['slug'], 'sikory-sb-reserve')
+        self.assertTrue(result['recognition']['family_tie'])
+
+    def test_clear_gap_matches_below_threshold(self):
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .72}, {'slug': 'b', 'score': .60}]
+        result = self.recognizer.recognize(self.photo)
+        self.assertEqual(result['status'], 'matched')
+        self.assertEqual(result['wine']['slug'], 'a')
 
     def test_compare_views_can_show_catalog_label_crop(self):
         panel = Image.new('RGB', (80, 140), (12, 12, 14))
@@ -52,6 +74,21 @@ class VisualDecisionTests(unittest.TestCase):
         self.assertTrue(view['label_jpeg_base64'])
         hidden = self.recognizer.recognize(self.photo)
         self.assertIsNone(hidden['recognition']['compared_with'][0]['label_jpeg_base64'])
+
+    def test_compare_slug_scores_without_changing_winner(self):
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .9, 'full_score': .9, 'crop_score': .81, 'best_view': 'full'}]
+        self.recognizer.visual.score_slug.return_value = {
+            'slug': 'b', 'score': .71, 'full_score': .64, 'crop_score': .71, 'best_view': 'crop', 'image_hash': 'x',
+        }
+        result = self.recognizer.recognize(self.photo, include_candidates=True, compare_slug='b')
+        self.assertEqual(result['slug'], 'a')
+        probe = result['recognition']['probe']
+        self.assertEqual(probe['slug'], 'b')
+        self.assertAlmostEqual(probe['crop_score'], .71)
+        skipped = self.recognizer.recognize(self.photo, include_candidates=True)
+        self.assertNotIn('probe', skipped['recognition'])
+        unknown = self.recognizer.recognize(self.photo, include_candidates=True, compare_slug='missing-wine')
+        self.assertTrue(unknown['recognition']['probe']['missing'])
 
     def test_combined_mode_skips_ocr_by_default(self):
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .80}]

@@ -359,6 +359,13 @@ body{background:#fffdfb}
 .catalog-match-shots figure{margin:0}
 .scan-debug-compare-note{margin:8px 0 0;color:var(--muted);font-size:10px;line-height:1.4}
 .scan-debug-compare-vs{color:var(--gold);font-size:18px}
+.debug-probe{margin:8px 0 12px}
+.debug-probe label{display:block;margin-bottom:6px;font-size:12px;color:var(--muted)}
+.debug-probe input{width:min(100%,420px);padding:8px 10px;border:1px solid #ead8ca;border-radius:10px;background:#fff}
+.debug-probe-hits{display:grid;gap:4px;margin-top:6px;max-width:420px}
+.debug-probe-hits button{display:block;width:100%;text-align:left;padding:8px 10px;border:1px solid #ead8ca;border-radius:10px;background:#fff}
+.debug-probe-hits small{display:block;color:var(--muted);font-size:11px}
+.debug-probe-hits strong{display:block;font-size:13px}
 .scan-debug-neighbors{display:grid;gap:8px;margin-top:8px}
 .scan-debug-neighbor{display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;align-items:center;padding:8px;border:1px solid #ead8ca;border-radius:12px;background:#fff}
 .scan-debug-neighbor img,.scan-debug-neighbor .dish-placeholder{width:52px;height:78px;object-fit:contain;background:#f6f1e8;border-radius:8px}

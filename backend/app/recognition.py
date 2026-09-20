@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from .catalog import WineCatalog, normalize
 from .label_detection import crop_label, detect_label, enhance_label
 from .label_signals import blend_candidates, crop_color_features
-from .ranking import ranking_metrics
+from .ranking import distinct_margin, is_visual_match, ranking_metrics, same_label_family
 from .recommend import alternatives as recommend_alternatives
 from .settings import Settings
 
@@ -116,13 +116,13 @@ class Recognizer:
             return "ocr"
         return "combined"
 
-    def recognize(self, image_bytes: bytes, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None) -> Dict[str, Any]:
+    def recognize(self, image_bytes: bytes, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None, compare_slug=None) -> Dict[str, Any]:
         started = perf_counter()
-        result = self._recognize(image_bytes, mode, include_candidates, ocr_enabled)
+        result = self._recognize(image_bytes, mode, include_candidates, ocr_enabled, compare_slug)
         result.setdefault('recognition', {}).setdefault('timings_ms', {})['total'] = round((perf_counter() - started) * 1000, 1)
         return result
 
-    def _recognize(self, image_bytes: bytes, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None) -> Dict[str, Any]:
+    def _recognize(self, image_bytes: bytes, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None, compare_slug=None) -> Dict[str, Any]:
         if mode not in self.MODES:
             return {
                 "status": "unknown",
@@ -222,8 +222,10 @@ class Recognizer:
                 text_matches = self._text_matches(text)
             ranked = blend_candidates(candidates, self.catalog, color_features, text, ocr_enabled)
             best = ranked[0]
-            margin = best['score'] - ranked[1]['score'] if len(ranked) > 1 else 0
             wine = self.catalog.get(best['slug'])
+            runner = self.catalog.get(ranked[1]['slug']) if len(ranked) > 1 else None
+            family_tie = same_label_family(wine, runner)
+            margin = distinct_margin(ranked, self.catalog)
             corroborated = bool(
                 ocr_enabled
                 and text_matches
@@ -232,8 +234,14 @@ class Recognizer:
                 and text_matches[0].score >= self.MATCH_THRESHOLD
                 and self._text_evidence(text_matches[0])
             )
-            matched = wine and best['score'] >= threshold and (
-                margin >= min_margin or corroborated or best['score'] >= clear_match
+            matched = bool(wine) and is_visual_match(
+                best['score'],
+                margin,
+                threshold=threshold,
+                min_margin=min_margin,
+                clear_match=clear_match,
+                family_tie=family_tie,
+                corroborated=corroborated,
             )
             method = "siglip2+pgvector+ocr" if (mode == "combined" and ocr_enabled) else "siglip2+pgvector"
             metrics = base_metrics(method)
@@ -246,6 +254,7 @@ class Recognizer:
                 crop_jpeg_base64=self._preview_jpeg(work_image),
                 compared_with=self._compare_views(ranked[:2], with_catalog_crops=include_candidates),
                 margin=round(margin, 4),
+                family_tie=family_tie,
                 ocr=ocr_status,
                 ocr_characters=len(text),
                 ocr_best={'slug': text_matches[0].wine.slug, 'score': round(text_matches[0].score, 4)} if text_matches else None,
@@ -276,6 +285,9 @@ class Recognizer:
             ]
             metrics["candidates"] = ranking["top5"]
             metrics["timings_ms"].update(visual=round(visual_ms, 1), ocr=round(ocr_ms, 1))
+            probe = self._probe_slug(work_image, compare_slug, color_features, text, ocr_enabled, include_candidates)
+            if probe is not None:
+                metrics["probe"] = probe
             status = 'matched' if matched else ('uncertain' if best['score'] >= 0.65 else 'unknown')
             lookalike_items = [
                 item for item in ranked
@@ -327,6 +339,19 @@ class Recognizer:
             if len(cards) >= limit:
                 break
         return cards
+
+    def _probe_slug(self, work_image, slug, color_features, text, ocr_enabled, include_candidates):
+        if not slug or not include_candidates or not self.visual:
+            return None
+        wine = self.catalog.get(slug)
+        if not wine:
+            return {"slug": slug, "missing": True}
+        scored = self.visual.score_slug(work_image, slug)
+        if not scored:
+            return {"slug": slug, "name": wine.name, "winery": wine.winery, "image_url": wine.image_url, "missing": True}
+        blended = blend_candidates([scored], self.catalog, color_features, text, ocr_enabled)
+        views = self._compare_views(blended, with_catalog_crops=True)
+        return views[0] if views else None
 
     def _compare_views(self, items: Iterable[Any], with_catalog_crops: bool = False) -> List[Dict[str, Any]]:
         views: List[Dict[str, Any]] = []

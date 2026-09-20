@@ -64,7 +64,7 @@ app.add_middleware(
     allow_origins=list(settings.cors_origins),
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-            allow_headers=["Content-Type", "X-Scanner-Debug", "X-Scanner-Admin", "X-Scanner-Mode", "X-Scanner-Benchmark", "X-Scanner-OCR"],
+            allow_headers=["Content-Type", "X-Scanner-Debug", "X-Scanner-Admin", "X-Scanner-Mode", "X-Scanner-Benchmark", "X-Scanner-OCR", "X-Scanner-Compare-Slug"],
 )
 
 catalog: Optional[WineCatalog] = None
@@ -137,7 +137,7 @@ def require_service() -> Recognizer:
 inference_slots = asyncio.Semaphore(2)
 
 
-async def recognize_upload(image: UploadFile, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None) -> Dict[str, Any]:
+async def recognize_upload(image: UploadFile, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None, compare_slug=None) -> Dict[str, Any]:
     declared = (image.content_type or "").split(";")[0].strip().lower()
     data = await image.read(settings.max_image_bytes + 1)
     if len(data) > settings.max_image_bytes:
@@ -155,7 +155,7 @@ async def recognize_upload(image: UploadFile, mode: str = "combined", include_ca
     except asyncio.TimeoutError:
         raise HTTPException(429, 'Recognition is busy; retry shortly')
     try:
-        return await run_in_threadpool(service.recognize, data, mode, include_candidates, ocr_enabled)
+        return await run_in_threadpool(service.recognize, data, mode, include_candidates, ocr_enabled, compare_slug)
     except Exception:
         import logging
         logging.exception('Recognition service failed')
@@ -187,7 +187,14 @@ async def recognize(request: Request, response: Response, image: UploadFile = Fi
             raw_ocr = request.headers.get('X-Scanner-OCR')
         if raw_ocr is not None:
             ocr_enabled = raw_ocr.strip().lower() in {'1', 'true', 'on', 'yes'}
-    result = await recognize_upload(image, mode, include_candidates, ocr_enabled)
+    compare_slug = None
+    if debug_request or token:
+        raw_compare = request.query_params.get('compare')
+        if raw_compare is None:
+            raw_compare = request.headers.get('X-Scanner-Compare-Slug')
+        if raw_compare and raw_compare.strip():
+            compare_slug = raw_compare.strip()[:200]
+    result = await recognize_upload(image, mode, include_candidates, ocr_enabled, compare_slug)
     response.headers['Cache-Control'] = 'no-store'
     if not token and not debug_request:
         ranking = dict(result.get('ranking') or {})

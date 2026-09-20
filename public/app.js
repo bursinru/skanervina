@@ -413,6 +413,9 @@ function withLabelScores(items, result) {
 }
 const queryParams = new URLSearchParams(location.search);
 const debugMode = queryParams.get('admin') === '1' || queryParams.get('debug') === '1';
+let lastCompareSlug = '';
+let lastCompareQuery = '';
+let probeSearchTimer = 0;
 $('admin-tools').hidden = !debugMode;
 $('processing-debug').hidden = !debugMode;
 function debugOcrEnabled() {
@@ -500,6 +503,15 @@ function viewScoreLine(item) {
   const better = item.best_view === 'crop' ? 'этикетка' : item.best_view === 'full' ? 'бутылка' : '';
   return `бутылка ${bottle} · этикетка ${label}${better ? ` · лучше ${better}` : ''}`;
 }
+function comparePairMarkup(item, cropSrc, place) {
+  const catalogSrc = debugCatalogImage(item.image_url);
+  const catalogLabel = item.label_jpeg_base64 ? `data:image/jpeg;base64,${item.label_jpeg_base64}` : '';
+  const pct = Number.isFinite(Number(item.score)) ? `${(Number(item.score) * 100).toFixed(1).replace('.', ',')}%` : '';
+  const title = [item.winery, item.name || item.slug].filter(Boolean).join(' · ');
+  const missing = item.missing ? 'В индексе нет векторов этой карточки.' : `Сравнение раздельное: ${viewScoreLine(item)}.`;
+  const catalogShots = `<div class="catalog-match-shots">${catalogSrc ? `<figure><img class="crop-sent" src="${escape(catalogSrc)}" alt="Бутылка в каталоге"><figcaption>Бутылка · ${escape(formatPct(item.full_score))}</figcaption></figure>` : ''}${catalogLabel ? `<figure><img class="crop-sent" src="${escape(catalogLabel)}" alt="Кроп этикетки в индексе"><figcaption>Этикетка · ${escape(formatPct(item.crop_score))}</figcaption></figure>` : (catalogSrc ? '' : '<span class="dish-placeholder">Нет фото каталога</span>')}</div>`;
+  return `<div class="scan-debug-compare-pair"><figure>${cropSrc ? `<img class="crop-sent" src="${escape(cropSrc)}" alt="Crop запроса">` : '<span class="dish-placeholder">Crop не собран</span>'}<figcaption>Ваш crop</figcaption></figure><span class="scan-debug-compare-vs" aria-hidden="true">↔</span><div>${catalogShots}<p class="scan-debug-compare-note">${escape(place)}${pct ? ` · итого ${escape(pct)}` : ''} · ${escape(title)}. ${escape(missing)}</p></div></div>`;
+}
 function formatPoints(delta) {
   const value = Number(delta);
   if (!Number.isFinite(value)) return '—';
@@ -552,21 +564,16 @@ function renderScanDebug({ result, elapsed }) {
   const compared = Array.isArray(metrics.compared_with) && metrics.compared_with.length
     ? metrics.compared_with
     : (result?.ranking?.top5 || []).slice(0, 2);
-  const comparePair = compared.map((item, index) => {
-    const catalogSrc = debugCatalogImage(item.image_url);
-    const catalogLabel = item.label_jpeg_base64 ? `data:image/jpeg;base64,${item.label_jpeg_base64}` : '';
-    const place = index === 0 ? '1 место' : `${index + 1} место`;
-    const pct = Number.isFinite(Number(item.score)) ? `${(Number(item.score) * 100).toFixed(1).replace('.', ',')}%` : '';
-    const title = [item.winery, item.name || item.slug].filter(Boolean).join(' · ');
-    const catalogShots = `<div class="catalog-match-shots">${catalogSrc ? `<figure><img class="crop-sent" src="${escape(catalogSrc)}" alt="Бутылка в каталоге"><figcaption>Бутылка · ${escape(formatPct(item.full_score))}</figcaption></figure>` : ''}${catalogLabel ? `<figure><img class="crop-sent" src="${escape(catalogLabel)}" alt="Кроп этикетки в индексе"><figcaption>Этикетка · ${escape(formatPct(item.crop_score))}</figcaption></figure>` : (catalogSrc ? '' : '<span class="dish-placeholder">Нет фото каталога</span>')}</div>`;
-    return `<div class="scan-debug-compare-pair"><figure>${cropSrc ? `<img class="crop-sent" src="${escape(cropSrc)}" alt="Crop запроса">` : '<span class="dish-placeholder">Crop не собран</span>'}<figcaption>Ваш crop</figcaption></figure><span class="scan-debug-compare-vs" aria-hidden="true">↔</span><div>${catalogShots}<p class="scan-debug-compare-note">${escape(place)} · итого ${escape(pct)} · ${escape(title)}. Сравнение раздельное: ${escape(viewScoreLine(item))}.</p></div></div>`;
-  }).join('');
+  const comparePair = compared.map((item, index) => comparePairMarkup(item, cropSrc, index === 0 ? '1 место' : `${index + 1} место`)).join('');
+  const probe = metrics.probe;
+  const probePair = probe ? comparePairMarkup(probe, cropSrc, 'Выбранная бутылка') : '';
+  const probeSearch = `<div class="debug-probe"><label for="debug-probe-q">Сравнить crop с другой бутылкой</label><input id="debug-probe-q" type="search" autocomplete="off" placeholder="Герцъ, Сикоры" value="${escape(lastCompareQuery)}"><div id="debug-probe-hits" class="debug-probe-hits" hidden></div><p class="scan-debug-footnote">Поиск по каталогу. Выберите вино — пересканируем это фото и покажем бутылку и этикетку рядом с вашим crop. На плохом кадре это не поднимет итоговый %, только покажет, сколько набирает выбранная карточка.</p></div>`;
   const neighborCards = (result?.ranking?.top5 || []).map((item, index) => {
     const catalogSrc = debugCatalogImage(item.image_url);
     const pct = Number.isFinite(Number(item.score)) ? `${(Number(item.score) * 100).toFixed(1).replace('.', ',')}%` : '—';
     return `<article class="scan-debug-neighbor">${catalogSrc ? `<img src="${escape(catalogSrc)}" alt="">` : '<span class="dish-placeholder">Нет фото</span>'}<div><small>${index + 1}. ${escape(item.winery || '')}</small><strong>${escape(item.name || item.slug || '')}</strong><em>итого ${escape(pct)} · ${escape(viewScoreLine(item))} · цвет ${formatPoints(item.color_delta)} · OCR ${formatPoints(item.ocr_delta)}</em></div></article>`;
   }).join('');
-  const cropMarkup = `<div class="scan-debug-crop">${photoUrl && (quadMarkup || boxStyle) ? `<figure><div class="crop-source"><img src="${escape(photoUrl)}" alt="Исходное фото">${quadMarkup || (boxStyle ? `<span class="crop-box" style="${boxStyle}"></span>` : '')}</div><figcaption>${quadMarkup ? 'Красный контур — панель этикетки, которую выпрямили' : 'Красная рамка — что вырезали'}</figcaption></figure>` : ''}${cropSrc ? `<figure><img class="crop-sent" src="${escape(cropSrc)}" alt="Crop"><figcaption>Этот crop сравнивали с каталогом</figcaption></figure>` : '<p class="scan-debug-footnote">Crop не пришёл — проверьте, что фото ещё в превью.</p>'}</div>${comparePair ? `<div class="scan-debug-details"><h3>С чем сравнивали crop</h3><div class="scan-debug-compare">${comparePair}</div></div>` : ''}${neighborCards ? `<div class="scan-debug-details"><h3>Похожие в индексе</h3><div class="scan-debug-neighbors">${neighborCards}</div></div>` : ''}`;
+  const cropMarkup = `<div class="scan-debug-crop">${photoUrl && (quadMarkup || boxStyle) ? `<figure><div class="crop-source"><img src="${escape(photoUrl)}" alt="Исходное фото">${quadMarkup || (boxStyle ? `<span class="crop-box" style="${boxStyle}"></span>` : '')}</div><figcaption>${quadMarkup ? 'Красный контур — панель этикетки, которую выпрямили' : 'Красная рамка — что вырезали'}</figcaption></figure>` : ''}${cropSrc ? `<figure><img class="crop-sent" src="${escape(cropSrc)}" alt="Crop"><figcaption>Этот crop сравнивали с каталогом</figcaption></figure>` : '<p class="scan-debug-footnote">Crop не пришёл — проверьте, что фото ещё в превью.</p>'}</div><div class="scan-debug-details"><h3>Найти бутылку в каталоге</h3>${probeSearch}${probePair ? `<div class="scan-debug-compare">${probePair}</div>` : ''}</div>${comparePair ? `<div class="scan-debug-details"><h3>С чем сравнивали crop</h3><div class="scan-debug-compare">${comparePair}</div></div>` : ''}${neighborCards ? `<div class="scan-debug-details"><h3>Похожие в индексе</h3><div class="scan-debug-neighbors">${neighborCards}</div></div>` : ''}`;
   const color = metrics.color || {};
   const paper = color.paper === 'cream' ? 'кремовая/светлая бумага' : color.paper === 'dark' ? 'тёмная бумага' : color.paper === 'mixed' ? 'смешанный тон' : 'не определён';
   const bottle = color.bottle_tone === 'red' ? 'красное' : color.bottle_tone === 'white' ? 'белое/светлое' : color.bottle_tone === 'rose' ? 'розовое' : 'не виден';
@@ -620,6 +627,33 @@ function bindDebugPanel() {
   if (resultBox) resultBox.onchange = () => setDebugOcr(resultBox.checked);
   const rescan = $('debug-rescan');
   if (rescan) rescan.onclick = () => runRecognize();
+  const probeInput = $('debug-probe-q');
+  const probeHits = $('debug-probe-hits');
+  if (!probeInput || !probeHits) return;
+  probeInput.oninput = () => {
+    clearTimeout(probeSearchTimer);
+    const q = probeInput.value.trim();
+    if (q.length < 2) { probeHits.hidden = true; probeHits.replaceChildren(); return; }
+    probeSearchTimer = setTimeout(async () => {
+      try {
+        const response = await fetch(`/v1/search?q=${encodeURIComponent(q)}`);
+        const data = response.ok ? await response.json() : { items: [] };
+        const items = (data.items || []).slice(0, 8);
+        probeHits.hidden = !items.length;
+        probeHits.innerHTML = items.map(item => `<button type="button" data-probe-slug="${escape(item.slug)}"><small>${escape(item.winery || '')}</small><strong>${escape(item.name || item.slug)}</strong></button>`).join('');
+        probeHits.querySelectorAll('[data-probe-slug]').forEach(button => {
+          button.onclick = () => {
+            lastCompareSlug = button.getAttribute('data-probe-slug') || '';
+            lastCompareQuery = button.querySelector('strong')?.textContent || lastCompareSlug;
+            probeHits.hidden = true;
+            runRecognize();
+          };
+        });
+      } catch {
+        probeHits.hidden = true;
+      }
+    }, 220);
+  };
 }
 $('recognize').onclick = () => runRecognize();
 async function runRecognize() {
@@ -641,6 +675,7 @@ async function runRecognize() {
     const url = new URL(endpoint, location.origin);
     if (debugMode) url.searchParams.set('ocr', ocrOn ? '1' : '0');
     const headers = debugMode ? { 'X-Scanner-Debug': '1', 'X-Scanner-OCR': ocrOn ? '1' : '0' } : {};
+    if (debugMode && lastCompareSlug) headers['X-Scanner-Compare-Slug'] = lastCompareSlug;
     const response = await fetch(url.toString(), { method:'POST', headers, body, signal:active.signal });
     if (response.status === 403) { notice('Сервер отклонил debug-запрос.'); return; }
     if (!response.ok) throw new Error('service');

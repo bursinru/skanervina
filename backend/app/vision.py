@@ -98,3 +98,28 @@ class VisualSearch:
                 'best_view': best_view,
             })
         return scored
+
+    def score_slug(self, image, slug):
+        """Score one catalog wine against the query crop, even if ANN missed it."""
+        from .database import connect
+        if not slug:
+            return None
+        vector = self.encoder.encode([image])[0]
+        with connect() as db:
+            detailed = db.execute(
+                '''
+                SELECT slug, image_hash, 1 - (embedding <=> %s::vector) AS score
+                FROM wine_embeddings WHERE model = %s AND slug = %s
+                ''',
+                (str(vector), MODEL_ID, slug),
+            ).fetchall()
+        if not detailed:
+            return None
+        full_score, crop_score, best_view = split_full_crop(detailed)
+        best = max(detailed, key=lambda row: float(row['score']))
+        return {
+            **best,
+            'full_score': None if full_score is None else round(full_score, 4),
+            'crop_score': None if crop_score is None else round(crop_score, 4),
+            'best_view': best_view,
+        }
