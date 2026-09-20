@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from app.label_detection import crop_label, detect_label, enhance_label
 
@@ -105,6 +105,40 @@ class LabelDetectionTests(unittest.TestCase):
         sample = np.asarray(cropped.resize((32, 48)))
         self.assertGreater(sample.mean(), 140)
         self.assertGreater(cropped.height, cropped.width * 0.9)
+
+    def test_arched_label_preserves_top_without_false_perspective(self):
+        image = Image.new("RGB", (400, 500), (12, 15, 14))
+        draw = ImageDraw.Draw(image)
+        draw.ellipse((105, 80, 295, 200), fill=(236, 224, 196))
+        draw.rectangle((105, 140, 295, 430), fill=(236, 224, 196))
+        draw.rectangle((155, 210, 250, 290), fill=(24, 24, 24))
+        detection = detect_label(image)
+        self.assertIsNotNone(detection.contour)
+        self.assertIsNone(detection.quad)
+        self.assertLess(min(y for x, y in detection.contour), .19)
+        cropped = crop_label(image, detection)
+        self.assertEqual(cropped.getpixel((0, 0)), (255, 255, 255))
+        # A dark illustration inside the paper must not become a background hole.
+        self.assertLess(np.asarray(cropped)[cropped.height // 2, cropped.width // 2].mean(), 60)
+
+    def test_shop_photo_does_not_join_shelf_labels(self):
+        image = Image.open(Path(__file__).parents[2] / "Датасет/yandex-real-eval/01-loco-cimbali-oranzh-muskat-oranzhevoe-suhoe-127.jpg")
+        detection = detect_label(image)
+        self.assertIsNotNone(detection.contour)
+        xs, ys = zip(*detection.contour)
+        self.assertGreater(min(ys), .62)
+        self.assertLess(max(ys), .94)
+        self.assertGreater(min(xs), .27)
+        self.assertLess(max(xs), .72)
+        self.assertGreater(max(xs) - min(xs), .33)
+        self.assertGreater(max(ys) - min(ys), .23)
+
+    def test_catalog_label_can_touch_both_sides(self):
+        image = Image.open(Path(__file__).parents[2] / "Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads/loco_cimbali_oranzh_muskat_oranzhevoe_suhoe_127_dc98a21033.webp")
+        detection = detect_label(image, catalog=True)
+        self.assertGreater(detection.bbox[1], .60)
+        self.assertLess(detection.bbox[3] - detection.bbox[1], .38)
+        self.assertIsNotNone(detection.contour)
 
     def test_tall_product_shot_crops_the_label_band(self):
         pixels = np.full((900, 280, 3), 248, dtype=np.uint8)

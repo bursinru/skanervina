@@ -209,7 +209,7 @@ async def recognize(request: Request, response: Response, image: UploadFile = Fi
             'ranking': ranking,
             'recognition': {
                 key: value for key, value in result.get('recognition', {}).items()
-                if key in ('method', 'reason', 'similarity', 'threshold', 'min_margin')
+                if key in ('method', 'reason', 'similarity', 'threshold', 'min_margin', 'label_detection')
             },
         }
     return result

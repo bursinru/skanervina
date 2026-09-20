@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=debug-probe-1" />
+  <link rel="stylesheet" href="/styles.css?v=label-connected-2" />
   <script src="/config.js" defer></script>
-  <script src="/app.js?v=debug-probe-1" type="module"></script>
+  <script src="/app.js?v=label-connected-2" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">К сканеру</a>
@@ -49,7 +49,7 @@
             <div class="scan-frame" aria-hidden="true"><span></span><span></span><span></span><span></span><div class="scan-line"></div></div>
             <span class="sample-label" id="sample-label">Пример положения бутылки</span>
             <div class="viewfinder-caption" id="viewfinder-caption"><span data-icon="focus"></span> Наведите камеру на этикетку</div>
-            <div class="processing-overlay" id="processing" hidden><div class="label-cutout"><img id="scanning-label" alt="Фото, по которому идёт поиск" /><span></span></div><h2>Знакомимся с вашим вином</h2><p id="processing-status">Идёт поиск по каталогу…</p><div class="processing-debug" id="processing-debug" hidden><div class="processing-elapsed" id="processing-elapsed">Прошло 0,0 с</div><ol class="processing-log" id="processing-log" aria-live="polite"></ol></div><button class="text-button light" id="cancel-request">Отменить</button></div>
+            <div class="processing-overlay" id="processing" hidden><div class="label-cutout"><img id="scanning-label" alt="Фото, по которому идёт поиск" /><span></span></div><h2>Знакомимся с вашим вином</h2><p id="processing-status" aria-live="polite">Идёт поиск по каталогу…</p><div class="processing-debug" id="processing-debug" hidden><div class="processing-elapsed" id="processing-elapsed">Прошло 0,0 с</div><ol class="processing-log" id="processing-log" aria-live="polite"></ol></div><button class="text-button light" id="cancel-request">Отменить</button></div>
           </div>
           <div class="scanner-controls"><div class="button-row" id="initial-actions"><button class="button primary" id="open-camera"><span data-icon="camera"></span> Сканировать этикетку</button><button class="button secondary" id="upload"><span data-icon="image"></span> Выбрать фото</button></div><div class="button-row" id="preview-actions" hidden><button class="button primary" id="recognize"><span data-icon="scan"></span> Узнать вино</button><button class="button secondary" id="replace-photo">Другое фото</button></div><div class="button-row" id="camera-actions" hidden><button class="button primary" id="capture"><span data-icon="camera"></span> Сделать снимок</button><button class="button secondary" id="close-camera">Закрыть камеру</button></div><p class="notice" id="notice" role="status" hidden></p></div>
           <input id="file-input" type="file" accept="image/*,image/heic,image/heif,.heic,.heif,.jpg,.jpeg,.png,.webp,.avif" hidden />

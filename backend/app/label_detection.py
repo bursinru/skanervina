@@ -10,7 +10,7 @@ from math import atan2, hypot
 from typing import Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
-from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 
 NormalizedBox = Tuple[float, float, float, float]
@@ -23,6 +23,7 @@ class LabelDetection:
     confidence: float
     method: str = "label_panel"
     quad: Optional[Quad] = None
+    contour: Optional[Tuple[Tuple[float, float], ...]] = None
 
 
 def _integral(values: np.ndarray) -> np.ndarray:
@@ -506,8 +507,12 @@ def _quad_from_mask(mask: np.ndarray, box: Sequence[int]) -> Optional[Quad]:
     ys, xs = np.where(mask[top:bottom, left:right])
     if xs.size < 80:
         return None
-    step = max(1, xs.size // 900)
-    points = np.stack((xs[::step] + left, ys[::step] + top), axis=1)
+    # Keep boundary extrema on every row; strided interior sampling loses corners.
+    points = []
+    for y in np.unique(ys):
+        row_x = np.flatnonzero(mask[y + top, left:right])
+        points.extend(((row_x.min() + left, y + top), (row_x.max() + left, y + top)))
+    points = np.asarray(points)
     simplified = _simplify_quad(_convex_hull(points))
     if not simplified:
         return None
@@ -547,6 +552,59 @@ def _quad_from_mask(mask: np.ndarray, box: Sequence[int]) -> Optional[Quad]:
     ):
         return None
     return _expand_quad(quad, 0.04, width, height)
+
+
+def _panel_contour(mask: np.ndarray, box: Sequence[int]):
+    """Follow the paper silhouette, filling printed holes without flattening its top.
+
+    Only accept a coherent panel; uncertain segmentation keeps the original crop.
+    The column envelope retains arched tops and die-cut edges.
+    """
+    left, top, right, bottom = map(int, box)
+    region = mask[top:bottom, left:right]
+    if not region.size:
+        return None
+    columns = []
+    for x in range(region.shape[1]):
+        ys = np.flatnonzero(region[:, x])
+        if len(ys) >= max(6, region.shape[0] * .03):
+            columns.append((x + left, int(ys[0]) + top, int(ys[-1]) + top))
+    # Ignore isolated reflections beside the panel instead of joining them to it.
+    runs = [[]]
+    for column in columns:
+        if runs[-1] and column[0] - runs[-1][-1][0] > 3:
+            runs.append([])
+        runs[-1].append(column)
+    columns = max(runs, key=len)
+    if len(columns) < max(12, region.shape[1] * .45):
+        return None
+    # Specular streaks on glass create narrow spikes above the paper. A median
+    # envelope rejects those while retaining broad arches and the lower die-cut.
+    radius = max(2, len(columns) // 20)
+    tops = [c[1] for c in columns]
+    columns = [(x, int(np.median(tops[max(0, i-radius):i+radius+1])), y1)
+               for i, (x, y0, y1) in enumerate(columns)]
+    stride = max(1, len(columns) // 64)
+    samples = columns[::stride]
+    if samples[-1] != columns[-1]:
+        samples.append(columns[-1])
+    points = [(x, y0) for x, y0, y1 in samples]
+    points += [(x, y1) for x, y0, y1 in reversed(samples)]
+    return tuple(points)
+
+
+def _quad_matches_contour(quad, contour, size):
+    """A curved/scalloped panel must never be forced into a projective rectangle."""
+    if not quad or not contour:
+        return False
+    panel = Image.new("1", size)
+    rectangle = Image.new("1", size)
+    ImageDraw.Draw(panel).polygon(contour, fill=1)
+    ImageDraw.Draw(rectangle).polygon(quad, fill=1)
+    a, b = np.asarray(panel), np.asarray(rectangle)
+    intersection = np.count_nonzero(a & b)
+    return (intersection / max(1, np.count_nonzero(a)) > .98
+            and intersection / max(1, np.count_nonzero(b)) > .90)
 
 
 def _perspective_coeffs(source: Sequence[Tuple[float, float]], dest: Sequence[Tuple[float, float]]):
@@ -591,6 +649,54 @@ def _grid_boxes(width: int, height: int) -> Iterable[Tuple[int, int, int, int]]:
                     if right - left < width * 0.12 or bottom - top < height * 0.2:
                         continue
                     yield left, top, right, bottom
+
+
+def _connected_panel(pixels, *, catalog=False):
+    """Select one coherent paper component before tracing its silhouette.
+
+    Opening severs narrow glass reflections; closing bridges text strokes.
+    Background shelves must not be joined via column envelopes.
+    """
+    h, w = pixels.shape[:2]
+    scale = min(1., 320 / max(h, w))
+    sw, sh = max(1, round(w * scale)), max(1, round(h * scale))
+    paper = _paper_mask(pixels) | ((pixels.min(axis=2) > .85))
+    small = np.asarray(Image.fromarray(paper.astype('uint8') * 255).resize((sw, sh))) > 127
+    small = _dilate(_erode(small, 4), 4)
+    small = _close(small, 2)
+    visited = np.zeros_like(small)
+    candidates = []
+    for sy, sx in zip(*np.where(small)):
+        if visited[sy, sx]:
+            continue
+        stack = [(int(sx), int(sy))]; points = []; visited[sy, sx] = True
+        while stack:
+            x, y = stack.pop(); points.append((x, y))
+            for nx, ny in ((x-1,y),(x+1,y),(x,y-1),(x,y+1)):
+                if 0 <= nx < sw and 0 <= ny < sh and small[ny,nx] and not visited[ny,nx]:
+                    visited[ny,nx] = True; stack.append((nx,ny))
+        if len(points) < sw * sh * .018:
+            continue
+        pts = np.asarray(points); l,t = pts.min(axis=0); r,b = pts.max(axis=0) + 1
+        bw,bh = r-l,b-t
+        density = len(points) / (bw*bh)
+        if bw < sw*.12 or bh < sh*.12 or not .35 < bh/bw < 4.0 or density < .42:
+            continue
+        if t <= 1 or b >= sh-1 or (not catalog and (l <= 1 or r >= sw-1)):
+            continue
+        # A foreground panel is generally larger than neighboring shelf labels.
+        center = abs((l+r)/2/sw-.5)
+        score = len(points) * density * (1 - .65*center)
+        candidates.append((score, pts, (l,t,r,b)))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item:item[0], reverse=True)
+    _, points, box = candidates[0]
+    # Trace within this component's box; retain dark printed artwork inside it.
+    mask = _close(paper, 3)
+    l,t,r,b = box
+    box = (max(0,int((l-3)/sw*w)),max(0,int((t-3)/sh*h)),min(w,int((r+3)/sw*w)),min(h,int((b+3)/sh*h)))
+    return mask, box
 
 
 def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection:
@@ -699,6 +805,12 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
                 round(height * 0.78),
             )
             best_box = _cover_and_trim(filled, best_box)
+    selected_panel = _connected_panel(pixels, catalog=catalog)
+    if selected_panel:
+        panel_mask, best_box = selected_panel
+        method = "connected_paper"
+    else:
+        panel_mask = None
     left, top, right, bottom = best_box
     pad_x = max(0.01, (right - left) / width * 0.03)
     pad_y = max(0.01, (bottom - top) / height * 0.03)
@@ -713,7 +825,11 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
     )
     if (result[2] - result[0]) * (result[3] - result[1]) > 0.82:
         result = (left / width, top / height, right / width, bottom / height)
-    pixel_quad = None if (tall_packshot or method == "paper_band") else _quad_from_mask(closed, (left, top, right, bottom))
+    pixel_quad = None if (tall_packshot or method == "paper_band") else _quad_from_mask(panel_mask if panel_mask is not None else closed, (left, top, right, bottom))
+    pixel_contour = _panel_contour(panel_mask, (left, top, right, bottom)) if panel_mask is not None else None
+    if not _quad_matches_contour(pixel_quad, pixel_contour, (width, height)):
+        pixel_quad = None
+    contour = tuple((x / width, y / height) for x, y in pixel_contour) if pixel_contour else None
     quad = None
     method_name = method
     if pixel_quad:
@@ -728,13 +844,18 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
             (pixel_quad[3][0] / width, pixel_quad[3][1] / height),
         )
         method_name = "paper_quad"
-    return LabelDetection(result, round(max(0.0, min(1.0, best_score)), 4), method_name, quad)
+    return LabelDetection(result, round(max(0.0, min(1.0, best_score)), 4), method_name, quad, contour)
 
 
 def crop_label(image: Image.Image, detection: LabelDetection) -> Image.Image:
     """Crop a detected label, unwarping a paper quad when corners are reliable."""
 
     image = ImageOps.exif_transpose(image).convert("RGB")
+    if detection.contour:
+        mask = Image.new("L", image.size)
+        ImageDraw.Draw(mask).polygon([(x * image.width, y * image.height) for x, y in detection.contour], fill=255)
+        # Neutral background for embeddings and OCR, same silhouette as the UI.
+        image = Image.composite(image, Image.new("RGB", image.size, "white"), mask)
     if detection.quad:
         warped = _warp_quad(image, detection.quad)
         if warped is not None and warped.width >= 32 and warped.height >= 32:

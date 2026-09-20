@@ -529,7 +529,7 @@ function cropBoxStyle(bbox) {
   return `left:${left}%;top:${top}%;width:${width}%;height:${height}%`;
 }
 function quadOverlay(quad) {
-  if (!Array.isArray(quad) || quad.length !== 4) return '';
+  if (!Array.isArray(quad) || quad.length < 3) return '';
   const points = quad.map(point => `${Number(point[0]) * 100},${Number(point[1]) * 100}`).join(' ');
   if (!points.includes(',')) return '';
   return `<svg class="crop-quad" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="${points}"></polygon></svg>`;
@@ -559,7 +559,7 @@ function renderScanDebug({ result, elapsed }) {
   const scoreNote = similarity === null ? 'метрика недоступна' : (ocrOn ? 'итого после SigLIP + цвет + OCR' : 'итого после SigLIP + цвет, без OCR');
   const bbox = metrics.label_detection?.bbox;
   const boxStyle = cropBoxStyle(bbox);
-  const quadMarkup = quadOverlay(metrics.label_detection?.quad);
+  const quadMarkup = quadOverlay(metrics.label_detection?.contour || metrics.label_detection?.quad);
   const cropSrc = metrics.crop_jpeg_base64 ? `data:image/jpeg;base64,${metrics.crop_jpeg_base64}` : cropFromPhoto(bbox);
   const compared = Array.isArray(metrics.compared_with) && metrics.compared_with.length
     ? metrics.compared_with
@@ -573,7 +573,7 @@ function renderScanDebug({ result, elapsed }) {
     const pct = Number.isFinite(Number(item.score)) ? `${(Number(item.score) * 100).toFixed(1).replace('.', ',')}%` : '—';
     return `<article class="scan-debug-neighbor">${catalogSrc ? `<img src="${escape(catalogSrc)}" alt="">` : '<span class="dish-placeholder">Нет фото</span>'}<div><small>${index + 1}. ${escape(item.winery || '')}</small><strong>${escape(item.name || item.slug || '')}</strong><em>итого ${escape(pct)} · ${escape(viewScoreLine(item))} · цвет ${formatPoints(item.color_delta)} · OCR ${formatPoints(item.ocr_delta)}</em></div></article>`;
   }).join('');
-  const cropMarkup = `<div class="scan-debug-crop">${photoUrl && (quadMarkup || boxStyle) ? `<figure><div class="crop-source"><img src="${escape(photoUrl)}" alt="Исходное фото">${quadMarkup || (boxStyle ? `<span class="crop-box" style="${boxStyle}"></span>` : '')}</div><figcaption>${quadMarkup ? 'Красный контур — панель этикетки, которую выпрямили' : 'Красная рамка — что вырезали'}</figcaption></figure>` : ''}${cropSrc ? `<figure><img class="crop-sent" src="${escape(cropSrc)}" alt="Crop"><figcaption>Этот crop сравнивали с каталогом</figcaption></figure>` : '<p class="scan-debug-footnote">Crop не пришёл — проверьте, что фото ещё в превью.</p>'}</div><div class="scan-debug-details"><h3>Найти бутылку в каталоге</h3>${probeSearch}${probePair ? `<div class="scan-debug-compare">${probePair}</div>` : ''}</div>${comparePair ? `<div class="scan-debug-details"><h3>С чем сравнивали crop</h3><div class="scan-debug-compare">${comparePair}</div></div>` : ''}${neighborCards ? `<div class="scan-debug-details"><h3>Похожие в индексе</h3><div class="scan-debug-neighbors">${neighborCards}</div></div>` : ''}`;
+  const cropMarkup = `<div class="scan-debug-crop">${photoUrl && (quadMarkup || boxStyle) ? `<figure><div class="crop-source"><img src="${escape(photoUrl)}" alt="Исходное фото">${quadMarkup || (boxStyle ? `<span class="crop-box" style="${boxStyle}"></span>` : '')}</div><figcaption>${quadMarkup ? 'Красный контур — найденная граница этикетки' : 'Красная рамка — что вырезали'}</figcaption></figure>` : ''}${cropSrc ? `<figure><img class="crop-sent" src="${escape(cropSrc)}" alt="Crop"><figcaption>Этот crop сравнивали с каталогом</figcaption></figure>` : '<p class="scan-debug-footnote">Crop не пришёл — проверьте, что фото ещё в превью.</p>'}</div><div class="scan-debug-details"><h3>Найти бутылку в каталоге</h3>${probeSearch}${probePair ? `<div class="scan-debug-compare">${probePair}</div>` : ''}</div>${comparePair ? `<div class="scan-debug-details"><h3>С чем сравнивали crop</h3><div class="scan-debug-compare">${comparePair}</div></div>` : ''}${neighborCards ? `<div class="scan-debug-details"><h3>Похожие в индексе</h3><div class="scan-debug-neighbors">${neighborCards}</div></div>` : ''}`;
   const color = metrics.color || {};
   const paper = color.paper === 'cream' ? 'кремовая/светлая бумага' : color.paper === 'dark' ? 'тёмная бумага' : color.paper === 'mixed' ? 'смешанный тон' : 'не определён';
   const bottle = color.bottle_tone === 'red' ? 'красное' : color.bottle_tone === 'white' ? 'белое/светлое' : color.bottle_tone === 'rose' ? 'розовое' : 'не виден';
@@ -656,6 +656,73 @@ function bindDebugPanel() {
   };
 }
 $('recognize').onclick = () => runRecognize();
+// The server silhouette and comparison crop share the same source coordinates.
+async function revealLabel(detection, signal) {
+  const points = detection?.contour;
+  if (!Array.isArray(points) || points.length < 3 || points.some(p =>
+    !Array.isArray(p) || p.length !== 2 || p.some(v => !Number.isFinite(v) || v < 0 || v > 1))) return;
+  const source = $('scanning-label');
+  try { await source.decode(); } catch { return; }
+  if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+  const canvas = document.createElement('canvas');
+  const scale = Math.min(1, 640 / Math.max(source.naturalWidth, source.naturalHeight));
+  canvas.width = Math.round(source.naturalWidth * scale);
+  canvas.height = Math.round(source.naturalHeight * scale);
+  canvas.setAttribute('aria-label', 'Выделенная этикетка');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const w = canvas.width, h = canvas.height;
+  const background = document.createElement("canvas");
+  background.width = w; background.height = h;
+  background.getContext("2d").drawImage(source, 0, 0, w, h);
+  const path = new Path2D();
+  points.forEach(([x, y], i) => i ? path.lineTo(x * w, y * h) : path.moveTo(x * w, y * h));
+  path.closePath();
+  const label = document.createElement('canvas');
+  label.width = w; label.height = h;
+  const lc = label.getContext('2d');
+  lc.clip(path); lc.drawImage(source, 0, 0, w, h);
+  const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+  const cx = (Math.min(...xs) + Math.max(...xs)) * w / 2;
+  const cy = (Math.min(...ys) + Math.max(...ys)) * h / 2;
+  const zoom = Math.min(1.7, .85 / Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)));
+  const container = source.parentElement;
+  container.append(canvas); container.classList.add('revealing');
+  $('processing-status').textContent = 'Отделяем этикетку от фона…';
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  await new Promise((resolve, reject) => {
+    let frame, start;
+    const cleanup = () => { cancelAnimationFrame(frame); signal.removeEventListener('abort', abort); };
+    const abort = () => { cleanup(); reject(new DOMException('Aborted', 'AbortError')); };
+    signal.addEventListener('abort', abort, { once: true });
+    const draw = now => {
+      start ??= now;
+      const t = reduced ? 1 : Math.min(1, (now - start) / 1350);
+      const fade = Math.min(1, t / .7);
+      ctx.clearRect(0, 0, w, h);
+      ctx.save();
+      const move = Math.max(0, (t - .5) * 2); const ease = move * move * (3 - 2 * move);
+      ctx.translate((w / 2 - cx) * ease, (h / 2 - cy) * ease);
+      ctx.translate(cx, cy); ctx.scale(1 + (zoom - 1) * ease, 1 + (zoom - 1) * ease); ctx.translate(-cx, -cy);
+      ctx.globalAlpha = (1 - fade) ** 2;
+      ctx.drawImage(source, 0, 0, w, h);
+      // A soft, staggered dissolution leaves the actual label untouched.
+      const tile = 10;
+      for (let y = 0; y < h; y += tile) for (let x = 0; x < w; x += tile) {
+        const delay = ((x * 17 + y * 31) % 101) / 101 * .25;
+        const local = Math.max(0, Math.min(1, (fade - delay) / .75));
+        ctx.globalAlpha = (1 - local) * local * .65;
+        const inset = local * tile / 2;
+        ctx.drawImage(background, x, y, Math.min(tile, w-x), Math.min(tile, h-y), x+inset, y+inset-local*12, tile-2*inset, tile-2*inset);
+      }
+      ctx.globalAlpha = 1; ctx.drawImage(label, 0, 0); ctx.restore();
+      if (t < 1) frame = requestAnimationFrame(draw);
+      else { cleanup(); resolve(); }
+    };
+    frame = requestAnimationFrame(draw);
+  });
+}
+
 async function runRecognize() {
   if (!photo || controller) return;
   const endpoint = window.SCANNER_CONFIG?.recognitionEndpoint;
@@ -663,6 +730,8 @@ async function runRecognize() {
   notice(''); controller = new AbortController(); const active = controller;
   const timer = setTimeout(() => active.abort('timeout'), 30000);
   const started = performance.now();
+  const cutout = $('scanning-label').parentElement;
+  cutout.querySelector('canvas')?.remove(); cutout.classList.remove('revealing');
   $('scanning-label').src = photoUrl;
   $('processing-status').textContent = 'Идёт поиск по каталогу…';
   $('scanner-screen').hidden = false;
@@ -683,6 +752,9 @@ async function runRecognize() {
     const elapsed = performance.now() - started;
     addProcessingLog(`Ответ сервера получен за ${formatElapsed(elapsed)}`);
     addProcessingLog(result.recognition?.ocr_enabled ? 'Сервер: OCR был включён' : 'Сервер: OCR был выключен');
+    clearTimeout(timer);
+    await revealLabel(result.recognition?.label_detection, active.signal);
+    if (active.signal.aborted) throw new DOMException('Aborted', 'AbortError');
     if (result.status === 'matched') {
       if (!result.wine?.name || !(result.wine.slug || result.slug)) throw new Error('contract');
       showWine({ ...result.wine, slug:result.wine.slug || result.slug, image_url:result.wine.image_url || result.wine.imageUrl || result.wine.photo_name, demo:false }, { result, elapsed });

@@ -176,6 +176,7 @@ class Recognizer:
                 "label_detection": {
                     "bbox": [round(value, 4) for value in detection.bbox],
                     "confidence": detection.confidence,
+                    "contour": [[round(x, 5), round(y, 5)] for x, y in detection.contour] if detection.contour else None,
                     "method": detection.method,
                     "quad": [[round(point[0], 4), round(point[1], 4)] for point in detection.quad] if detection.quad else None,
                 },

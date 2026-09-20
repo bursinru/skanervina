@@ -68,12 +68,13 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.get('/v1/catalog/' + items[0]['slug']).status_code, 200)
 
     def test_metrics_are_protected_and_debug_is_open(self):
-        result = {'status': 'uncertain', 'slug': 'fanagoria-test', 'wine': {'slug': 'fanagoria-test', 'name': 'Wine', 'winery': 'Test'}, 'confidence': .8, 'recognition': {'similarity': .8, 'timings_ms': {'total': 123}}}
+        result = {'status': 'uncertain', 'slug': 'fanagoria-test', 'wine': {'slug': 'fanagoria-test', 'name': 'Wine', 'winery': 'Test'}, 'confidence': .8, 'recognition': {'similarity': .8, 'timings_ms': {'total': 123}, 'label_detection': {'contour': [[.3, .6], [.7, .6], [.7, .9], [.3, .9]]}}}
         with patch.dict(os.environ, {'SCANNER_ADMIN_TOKEN': 'test-secret'}), patch('app.main.recognize_upload', return_value=result):
             photo = {'image': ('test.jpg', b'photo', 'image/jpeg')}
             public = self.client.post('/v1/recognize', files=photo).json()
             self.assertIsNone(public['confidence'])
             self.assertNotIn('timings_ms', public['recognition'])
+            self.assertEqual(public['recognition']['label_detection'], result['recognition']['label_detection'])
             self.assertEqual(public['slug'], 'fanagoria-test')
             self.assertEqual(self.client.post('/v1/recognize', files=photo, headers={'X-Scanner-Admin': 'wrong'}).status_code, 403)
             admin = self.client.post('/v1/recognize', files=photo, headers={'X-Scanner-Admin': 'test-secret'})
