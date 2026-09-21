@@ -21,11 +21,6 @@ from statistics import median
 SUFFIXES = {".webp", ".jpg", ".jpeg", ".png"}
 
 CONFIGS = [
-    ("crop_noocr", "image_auto", "0"),
-    ("crop_ocr", "image_auto", "1"),
-    ("full_noocr", "image_full", "0"),
-    ("full_ocr", "image_full", "1"),
-    ("merge_noocr", "combined", "0"),
     ("merge_ocr", "combined", "1"),
 ]
 
@@ -82,6 +77,8 @@ def compact(result: dict) -> dict:
         "ocr_text": (rec.get("ocr_text") or "")[:180],
         "ocr_corroborated": rec.get("ocr_corroborated"),
         "detect": (rec.get("label_detection") or {}).get("method"),
+        "query_view": rec.get("query_view"),
+        "crop_quality": rec.get("crop_quality"),
         "timings_ms": rec.get("timings_ms"),
         "top5": slim,
         "error": None,
@@ -166,14 +163,20 @@ def main():
         payload = {"rows": rows, "partial": True}
         args.out.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     summary = {name: summarize(rows, name) for name, _, _ in CONFIGS}
-    pairs = {
-        "crop vs full (no OCR)": agreement(rows, "crop_noocr", "full_noocr"),
-        "crop OCR vs crop no OCR": agreement(rows, "crop_ocr", "crop_noocr"),
-        "full OCR vs full no OCR": agreement(rows, "full_ocr", "full_noocr"),
-        "merge OCR vs merge no OCR": agreement(rows, "merge_ocr", "merge_noocr"),
-        "merge OCR vs crop OCR": agreement(rows, "merge_ocr", "crop_ocr"),
-        "merge OCR vs full OCR": agreement(rows, "merge_ocr", "full_ocr"),
-    }
+    names = [name for name, _, _ in CONFIGS]
+    pairs = {}
+    if "crop_noocr" in names and "full_noocr" in names:
+        pairs["crop vs full (no OCR)"] = agreement(rows, "crop_noocr", "full_noocr")
+    if "crop_ocr" in names and "crop_noocr" in names:
+        pairs["crop OCR vs crop no OCR"] = agreement(rows, "crop_ocr", "crop_noocr")
+    if "full_ocr" in names and "full_noocr" in names:
+        pairs["full OCR vs full no OCR"] = agreement(rows, "full_ocr", "full_noocr")
+    if "merge_ocr" in names and "merge_noocr" in names:
+        pairs["merge OCR vs merge no OCR"] = agreement(rows, "merge_ocr", "merge_noocr")
+    if "merge_ocr" in names and "crop_ocr" in names:
+        pairs["merge OCR vs crop OCR"] = agreement(rows, "merge_ocr", "crop_ocr")
+    if "merge_ocr" in names and "full_ocr" in names:
+        pairs["merge OCR vs full OCR"] = agreement(rows, "merge_ocr", "full_ocr")
     report = {
         "folder": str(args.folder),
         "url": args.url,

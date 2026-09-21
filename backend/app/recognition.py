@@ -6,7 +6,7 @@ from io import BytesIO
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .catalog import WineCatalog, normalize
-from .label_detection import crop_label, detect_label, enhance_label, label_rgb
+from .label_detection import crop_front_design, crop_label, crop_quality, detect_label, enhance_label, label_rgb
 from .label_signals import blend_candidates, crop_color_features
 from .ranking import distinct_margin, is_visual_match, ranking_metrics, same_label_family
 from .recommend import alternatives as recommend_alternatives
@@ -151,10 +151,19 @@ class Recognizer:
         detection = detect_label(image)
         detection_ms = (perf_counter() - detection_started) * 1000
         crop_started = perf_counter()
-        label = crop_label(image, detection)
+        quality = crop_quality(image, detection)
+        if quality['usable']:
+            label = crop_label(image, detection, preserve_pixels=True)
+            query_view = 'label'
+        elif 'small_upper_fragment' in quality['reasons']:
+            label = crop_front_design(image, detection)
+            query_view = 'front_design'
+        else:
+            label = image
+            query_view = 'full_image'
         crop_ms = (perf_counter() - crop_started) * 1000
         kind = self._mode_kind(mode)
-        if mode in {"image_auto_enhanced", "ocr_auto_enhanced"}:
+        if mode in {"image_auto_enhanced", "ocr_auto_enhanced"} and quality['usable']:
             enhancement_started = perf_counter()
             enhanced = enhance_label(label)
             enhancement_ms = (perf_counter() - enhancement_started) * 1000
@@ -171,6 +180,8 @@ class Recognizer:
         def base_metrics(method: str) -> Dict[str, Any]:
             return {
                 "method": method,
+                "crop_quality": quality,
+                "query_view": 'full_image' if mode in {'image_full', 'ocr_full'} else query_view,
                 "label_detection": {
                     "bbox": [round(value, 4) for value in detection.bbox],
                     "confidence": detection.confidence,
@@ -246,6 +257,10 @@ class Recognizer:
                 family_tie=family_tie,
                 corroborated=corroborated,
             )
+            # A high embedding score cannot validate a failed label detection.
+            # Keep suggestions available, but require text support for auto-match.
+            if mode != "image_full" and not quality['usable'] and not corroborated:
+                matched = False
             method = "siglip2+pgvector+ocr" if run_ocr else "siglip2+pgvector"
             metrics = base_metrics(method)
             metrics.update(

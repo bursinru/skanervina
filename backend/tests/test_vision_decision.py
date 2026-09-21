@@ -9,7 +9,26 @@ from app.settings import settings
 
 
 class VisualDecisionTests(unittest.TestCase):
+    def test_glare_fragment_uses_front_design_without_auto_match(self):
+        from app.label_detection import LabelDetection
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}]
+        fragment = LabelDetection((.46, .22, .53, .44), .9)
+        with patch('app.recognition.detect_label', return_value=fragment):
+            result = self.recognizer.recognize(self.photo, ocr_enabled=True)
+        self.assertEqual(result['status'], 'uncertain')
+        self.assertEqual(result['recognition']['query_view'], 'front_design')
+        self.assertIn('tiny_region', result['recognition']['crop_quality']['reasons'])
+        self.assertEqual(self.recognizer.visual.search.call_count, 2)
+        self.assertLess(self.recognizer.visual.search.call_args_list[0].args[0].width, 50)
+        self.assertEqual(self.recognizer.visual.search.call_args_list[1].args[0].size, (50, 50))
+        self.recognizer._ocr.assert_called_once()
+
     def setUp(self):
+        from app.label_detection import LabelDetection
+        # Ranking tests isolate recognition from the detector on a blank image.
+        detector = patch('app.recognition.detect_label', return_value=LabelDetection((.2, .3, .8, .9), .8))
+        detector.start()
+        self.addCleanup(detector.stop)
         self.catalog = WineCatalog.from_rows([
             {'Slug': 'a', 'Название вина': 'Alpha'},
             {'Slug': 'b', 'Название вина': 'Beta'},

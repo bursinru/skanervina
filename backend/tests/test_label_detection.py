@@ -4,10 +4,40 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-from app.label_detection import crop_label, detect_label, enhance_label
+from app.label_detection import LabelDetection, crop_front_design, crop_label, crop_quality, detect_label, enhance_label
 
 
 class LabelDetectionTests(unittest.TestCase):
+    def test_small_upper_glare_region_is_rejected(self):
+        image = Image.new('RGB', (3024, 4032))
+        detection = LabelDetection((.4358, .2087, .635, .4413), .9)
+        quality = crop_quality(image, detection)
+        self.assertFalse(quality['usable'])
+        self.assertIn('small_upper_fragment', quality['reasons'])
+
+    def test_printed_glass_fallback_crops_below_glare_without_changing_pixels(self):
+        image = Image.open(Path(__file__).parents[2] / 'Датасет/Реальные фото/1.73_06-09-2026_14-54-06.webp').convert('RGB')
+        detection = detect_label(image)
+        self.assertIn('small_upper_fragment', crop_quality(image, detection)['reasons'])
+        cropped = crop_front_design(image, detection)
+        self.assertLess(cropped.width, image.width)
+        self.assertLess(cropped.height, image.height)
+        self.assertEqual(cropped.getpixel((cropped.width // 2, cropped.height // 2)),
+                         image.getpixel((round(((detection.bbox[0] + detection.bbox[2]) / 2 - .32) * image.width) + cropped.width // 2,
+                                         round((detection.bbox[3] + .02) * image.height) + cropped.height // 2)))
+
+    def test_query_crop_keeps_artwork_outside_paper_color_mask(self):
+        image = Image.new('RGB', (100, 100), 'blue')
+        detection = LabelDetection((0, 0, 1, 1), .8,
+                                   contour=((0, 0), (1, 0), (.5, .5)))
+        self.assertEqual(crop_label(image, detection, preserve_pixels=True).getpixel((50, 90)), (0, 0, 255))
+        self.assertEqual(crop_label(image, detection).getpixel((50, 90)), (255, 255, 255))
+
+    def test_narrow_real_label_is_not_rejected_by_aspect_alone(self):
+        image = Image.new('RGB', (400, 600))
+        detection = LabelDetection((.3, .1, .6, .9), .8)
+        self.assertTrue(crop_quality(image, detection)['usable'])
+
     def test_transparent_packshot_excludes_glass_and_preserves_illustration(self):
         image = Image.open(Path(__file__).parent / 'fixtures/riesling-catalog.png')
         detection = detect_label(image, catalog=True)

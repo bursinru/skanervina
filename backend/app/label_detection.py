@@ -1043,14 +1043,57 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
     return LabelDetection(result, round(max(0.0, min(1.0, best_score)), 4), method_name, quad, contour)
 
 
-def crop_label(image: Image.Image, detection: LabelDetection) -> Image.Image:
+def crop_quality(image: Image.Image, detection: LabelDetection) -> dict:
+    """Conservative geometry gate; scores are diagnostics, not probabilities."""
+    left, top, right, bottom = detection.bbox
+    width, height = max(0, right - left), max(0, bottom - top)
+    area = width * height
+    aspect = width * image.width / max(height * image.height, 1)
+    reasons = []
+    if area < 0.025:
+        reasons.append("tiny_region")
+    if aspect < 0.32 and area < 0.12:
+        reasons.append("narrow_fragment")
+    if aspect > 5 and area < 0.12:
+        reasons.append("thin_fragment")
+    if area < 0.06 and (top + bottom) / 2 < 0.40:
+        reasons.append("small_upper_fragment")
+    return {"usable": not reasons, "reasons": reasons,
+            "area_fraction": round(area, 4), "aspect_ratio": round(aspect, 4)}
+
+
+def crop_front_design(image: Image.Image, detection: LabelDetection) -> Image.Image:
+    """Conservative printed-glass fallback below a rejected upper highlight.
+
+    Keep the source pixels untouched: glass printing has no paper contour to
+    mask or planar surface to rectify. The rejected region supplies only the
+    horizontal position of the bottle, never the crop content.
+    """
+    image = label_rgb(image)
+    left, top, right, bottom = detection.bbox
+    centre = (left + right) / 2
+    bounds = (
+        max(0.0, centre - 0.32),
+        min(0.72, max(0.38, bottom + 0.02)),
+        min(1.0, centre + 0.22),
+        0.84,
+    )
+    if bounds[1] >= bounds[3] or bounds[2] <= bounds[0]:
+        return image
+    return image.crop((
+        round(bounds[0] * image.width), round(bounds[1] * image.height),
+        round(bounds[2] * image.width), round(bounds[3] * image.height),
+    ))
+
+
+def crop_label(image: Image.Image, detection: LabelDetection, *, preserve_pixels: bool = False) -> Image.Image:
     """Crop a detected label, unwarping a paper quad when corners are reliable."""
 
     image = label_rgb(image)
     if detection.method == "full_frame":
         width, height = image.size
         return image.crop((round(width * 0.12), round(height * 0.32), round(width * 0.88), round(height * 0.98)))
-    if detection.contour:
+    if detection.contour and not preserve_pixels:
         mask = Image.new("L", image.size)
         ImageDraw.Draw(mask).polygon([(x * image.width, y * image.height) for x, y in detection.contour], fill=255)
         # Neutral background for embeddings and OCR, same silhouette as the UI.
