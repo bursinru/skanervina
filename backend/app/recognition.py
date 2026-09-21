@@ -201,7 +201,7 @@ class Recognizer:
         if self.visual:
             visual_started = perf_counter()
             candidates = self.visual.search(work_image, limit=8)
-            if work_image is not image:
+            if mode == "combined" and work_image is not image:
                 candidates = merge_query_views(candidates, self.visual.search(image, limit=8), limit=8)
             visual_ms = (perf_counter() - visual_started) * 1000
             if not candidates:
@@ -214,21 +214,23 @@ class Recognizer:
             min_margin = float(os.getenv('CV_MATCH_MARGIN', '0.04'))
             clear_match = float(os.getenv('CV_CLEAR_MATCH', '0.85'))
             text, ocr_status, text_matches, ocr_ms = "", "skipped", [], 0.0
+            explicit_ocr = ocr_enabled
             if ocr_enabled is None:
                 ocr_enabled = os.getenv('CV_OCR_ENABLED', 'false').lower() == 'true'
-            if mode == "combined" and ocr_enabled:
+            run_ocr = bool(ocr_enabled) and (mode == "combined" or explicit_ocr is True)
+            if run_ocr:
                 ocr_started = perf_counter()
                 text, ocr_status = self._ocr(self._image_bytes(work_image), psm=6)
                 ocr_ms = (perf_counter() - ocr_started) * 1000
                 text_matches = self._text_matches(text)
-            ranked = blend_candidates(candidates, self.catalog, color_features, text, ocr_enabled, self.ocr_references)
+            ranked = blend_candidates(candidates, self.catalog, color_features, text, run_ocr, self.ocr_references)
             best = ranked[0]
             wine = self.catalog.get(best['slug'])
             runner = self.catalog.get(ranked[1]['slug']) if len(ranked) > 1 else None
             family_tie = same_label_family(wine, runner)
             margin = distinct_margin(ranked, self.catalog)
             corroborated = bool(
-                ocr_enabled
+                run_ocr
                 and text_matches
                 and wine
                 and text_matches[0].wine.slug == best['slug']
@@ -244,7 +246,7 @@ class Recognizer:
                 family_tie=family_tie,
                 corroborated=corroborated,
             )
-            method = "siglip2+pgvector+ocr" if (mode == "combined" and ocr_enabled) else "siglip2+pgvector"
+            method = "siglip2+pgvector+ocr" if run_ocr else "siglip2+pgvector"
             metrics = base_metrics(method)
             metrics.update(
                 similarity=round(best['score'], 4),

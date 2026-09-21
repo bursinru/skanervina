@@ -32,6 +32,19 @@ class VisualDecisionTests(unittest.TestCase):
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .80}]
         self.assertEqual(self.recognizer.recognize(self.photo)['slug'], 'a')
 
+    def test_full_bottle_leader_is_not_replaced_by_a_wrong_crop(self):
+        self.recognizer.catalog = WineCatalog.from_rows([
+            {'Slug': 'relicta', 'Название вина': 'Реликта', 'Винодельня': 'Реликта'},
+            {'Slug': 'flamingo', 'Название вина': 'Фламинго', 'Винодельня': 'Николаев и сыновья'},
+        ], 'https://example.com/')
+        self.recognizer.visual.search.return_value = [
+            {'slug': 'relicta', 'score': .829, 'full_score': .701, 'crop_score': .829, 'best_view': 'crop'},
+            {'slug': 'flamingo', 'score': .914, 'full_score': .914, 'crop_score': .597, 'best_view': 'full'},
+        ]
+        result = self.recognizer.recognize(self.photo)
+        self.assertEqual(result['status'], 'matched')
+        self.assertEqual(result['wine']['slug'], 'flamingo')
+
     def test_strong_top_match_does_not_need_margin(self):
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .871}, {'slug': 'b', 'score': .864}]
         result = self.recognizer.recognize(self.photo)
@@ -119,7 +132,14 @@ class VisualDecisionTests(unittest.TestCase):
         result = self.recognizer.recognize(self.photo, mode='image_auto')
         self.assertEqual(result['slug'], 'a')
         self.recognizer._ocr.assert_not_called()
+        self.assertEqual(self.recognizer.visual.search.call_count, 1)
         self.assertIn('label_detection', result['recognition'])
+
+    def test_image_auto_runs_ocr_when_forced(self):
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .80}, {'slug': 'b', 'score': .79}]
+        result = self.recognizer.recognize(self.photo, mode='image_auto', ocr_enabled=True)
+        self.recognizer._ocr.assert_called_once()
+        self.assertEqual(result['recognition']['method'], 'siglip2+pgvector+ocr')
 
     def test_ocr_only_mode_does_not_run_visual_search(self):
         self.recognizer._ocr.return_value = ('Alpha Winery', 'ok')

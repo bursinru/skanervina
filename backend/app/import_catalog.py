@@ -79,6 +79,7 @@ def main():
     parser.add_argument('--index', action='store_true')
     parser.add_argument('--extra-images', type=Path)
     parser.add_argument('--only-slug', type=str)
+    parser.add_argument('--only-slugs', type=str, help='Comma-separated slugs')
     parser.add_argument('--slug-prefix', type=str)
     parser.add_argument('--crops', action='store_true', default=True)
     parser.add_argument('--no-crops', action='store_false', dest='crops')
@@ -91,16 +92,34 @@ def main():
     migrate()
     catalog = load_catalog(args.catalog)
     wines = list(catalog._wines.values())
+    selected = False
     if args.only_slug:
         wine = catalog.get(args.only_slug)
         if not wine:
             raise ValueError(f'Unknown slug: {args.only_slug}')
         wines = [wine]
+        selected = True
+    if args.only_slugs:
+        wanted = [slug.strip() for slug in args.only_slugs.split(',') if slug.strip()]
+        found, unknown = [], []
+        for slug in wanted:
+            wine = catalog.get(slug)
+            if wine:
+                found.append(wine)
+            else:
+                unknown.append(slug)
+        if unknown:
+            print(json.dumps({'unknown_slugs': unknown}), flush=True)
+        if not found:
+            raise ValueError('No known slugs in --only-slugs')
+        wines = found
+        selected = True
     if args.slug_prefix:
         wines = [wine for wine in wines if wine.slug.startswith(args.slug_prefix)]
         if not wines:
             raise ValueError(f'No wines with slug prefix: {args.slug_prefix}')
-    if not args.only_slug and not args.slug_prefix:
+        selected = True
+    if not selected:
         with connect() as db:
             for wine in wines:
                 db.execute('INSERT INTO wines (slug, card, image_name) VALUES (%s,%s,%s) ON CONFLICT (slug) DO UPDATE SET card=excluded.card, image_name=excluded.image_name',

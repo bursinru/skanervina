@@ -391,6 +391,19 @@ body{background:#fffdfb}
 .alt-card-score{margin-left:auto;flex:0 0 auto;align-self:start;min-width:3.6em;padding:6px 8px;border-radius:999px;background:#f6f1e8;color:#792c38;font-size:12px;font-weight:700;letter-spacing:-.2px;text-align:center;font-variant-numeric:tabular-nums;line-height:1.2}
 .after-search{margin-top:25px;padding:22px 24px;border-radius:19px;background:#f8f2e9}
 .after-search .sommelier-heading{margin-top:22px}
+.sommelier-panel{margin-top:8px}
+.sommelier-hero h2{font:500 28px/1.15 "Playfair Display",Georgia,serif;margin:0;letter-spacing:-.4px}
+.sommelier-sub{margin:6px 0 0;color:var(--muted);font-size:14px;font-style:italic}
+.sommelier-step{margin-top:12px;padding:14px 16px;border:1px solid #eadfd3;border-radius:18px;background:#fffdfb}
+.sommelier-step-title{display:flex;align-items:center;gap:10px;margin:0 0 10px;font-size:15px;font-weight:600}
+.sommelier-num{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--wine);color:#fff;font-size:13px;font-weight:700}
+.sommelier-step .food-buttons{margin:0}
+.sommelier-hint-card{margin:14px 0 0;padding:14px 16px;border-radius:16px;background:#f6ebe6;color:#5c3a3d;font-size:14px;line-height:1.55}
+.sommelier-found{margin:16px 0 4px;font-size:13px;color:var(--muted);font-weight:600}
+.sommelier-reason{display:inline-flex;margin-top:6px;padding:3px 8px;border-radius:999px;background:#f3e8e4;color:var(--wine);font-size:11px;font-weight:600}
+.sommelier-rating{display:block;margin-top:4px;color:#b0892f;font-size:12px;font-weight:700}
+.alt-card.sommelier-card{grid-template-columns:46px minmax(0,1fr)}
+.alt-card.sommelier-card strong{min-height:0}
 .alt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:12px;align-items:stretch}
 .alt-card{display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:10px 12px;align-items:start;min-height:108px;padding:12px;border:1px solid #e2d8ca;border-radius:14px;background:#fffdfa;color:inherit;text-decoration:none;cursor:pointer;text-align:left}
 .alt-card img,.alt-card .dish-placeholder{width:46px;height:86px;flex:none;object-fit:contain;object-position:center;border-radius:8px;background:#f6f1e8}
@@ -454,7 +467,8 @@ body{background:#fffdfb}
 .glass-wine{fill:var(--wine);stroke:none;opacity:0;transition:opacity .15s}
 .public-rating-badge .glass-wine,.rating-option.filled .glass-wine{opacity:1}
 #result-screen .catalog-visuals{margin:0}
-#result-screen .visual-facts{display:grid;grid-template-columns:1.1fr 1fr;gap:10px}
+#result-screen .visual-facts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#result-screen .visual-fact-color{grid-column:1 / -1}
 #result-screen .visual-fact{min-width:0;min-height:72px;gap:10px;padding:10px;border:0;border-radius:16px;background:#fffdfbc9}
 #result-screen .visual-fact img{width:44px;height:44px;border-radius:11px;flex:none}
 #result-screen .visual-fact small{font-size:10px;margin-bottom:4px}
@@ -470,6 +484,10 @@ body{background:#fffdfb}
 #result-screen .wine-facts small{font-size:10px;letter-spacing:.4px;margin-bottom:7px}
 #result-screen .result-actions{display:flex;flex-direction:row;gap:10px;margin:0}
 #result-screen .result-actions .button{flex:1;min-width:0;width:auto;min-height:48px;padding:10px 12px;font-size:14px;border-radius:16px;background:#fffdfb}
+#result-screen .result-actions .button.primary,
+#result-screen .result-actions #compare-wine.is-selected{background:var(--wine);color:#fff;border-color:var(--wine)}
+#result-screen .result-actions .button.primary:hover,
+#result-screen .result-actions #compare-wine.is-selected:hover{background:var(--wine-dark)}
 #result-screen .fit-card{margin:0}
 #result-screen .result-split{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:14px;align-items:start}
 #result-screen .result-taste{padding:24px;border-radius:24px;background:#f6f1e8}
@@ -482,14 +500,16 @@ body{background:#fffdfb}
 #result-screen .user-rating{display:flex;flex-direction:row;justify-content:space-between;gap:8px}
 #result-screen .user-rating-cta{padding:0;margin:0;background:none;text-align:left;font:12px/1.4 var(--font);color:var(--muted)}
 #result-screen .rating-option{display:grid;place-items:center;width:38px;height:44px;padding:4px;border-radius:10px}
-#result-screen .rating-option .rating-glass{width:25px;height:34px}
+#result-screen .rating-option .rating-icons{width:28px;height:36px}
+#result-screen .rating-option .rating-icon-glass,#result-screen .rating-option .rating-icon-wine{width:28px;height:36px}
+#result-screen .public-rating-badge .rating-public-icon{width:28px;height:28px;transform:none}
 #result-screen .rating-options:hover .rating-option{background:transparent}
 @media(hover:hover){
   #result-screen .rating-option:hover{background:#eadfce}
   #result-screen .rating-options:hover .glass-wine{opacity:1}
   #result-screen .rating-options .rating-option:hover ~ .rating-option .glass-wine{opacity:0}
 }
-#result-screen .wine-summary{margin:14px 0 0;font-size:13px;line-height:1.65;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+#result-screen .wine-summary{margin:14px 0 0;font-size:13px;line-height:1.65;display:block;-webkit-line-clamp:unset;overflow:visible;max-height:none;text-overflow:unset;white-space:normal}
 #result-screen .taste-tags{margin:14px 0 0;gap:6px}
 #result-screen .taste-tags span{padding:7px 12px;font-size:11px;background:#fffdfbc9}
 #result-screen .dish-pairings{margin:0;padding:24px;border-radius:24px}
@@ -510,7 +530,7 @@ body{background:#fffdfb}
   #result-screen .public-rating-badge{gap:6px;padding:5px 10px 5px 7px}
   #result-screen .public-rating-badge span{font-size:19px}
   #result-screen .public-rating-badge small{font-size:9px;max-width:55px}
-  #result-screen .public-rating-badge .rating-glass{width:19px;height:27px}
+  #result-screen .public-rating-badge .rating-public-icon{width:22px;height:22px}
   #result-screen .visual-facts{grid-template-columns:1fr;gap:7px}
   #result-screen .visual-fact{min-height:45px;padding:7px 9px;border-radius:11px;gap:8px}
   #result-screen .visual-fact img{width:32px;height:32px;border-radius:8px}

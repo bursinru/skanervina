@@ -52,5 +52,11 @@
     "file": "public/assets/catalog/grape-saperavi.webp",
     "source": "https://vino-svoe.ru/wines/fanagoriya-100-ottenkov-krasnogo-saperavi-krasnoe-suhoe-14",
     "image": "https://api.vino-svoe.ru/v1/img/str-api/740/740/resize/uploads/Saperavi3_973cb28f6e.webp"
+  },
+  {
+    "variety": "мальбек",
+    "file": "public/assets/catalog/grape-malbec.webp",
+    "source": "https://vino-svoe.ru/wines/nikolaev-i-synovya-flamingo-malbek-rozovoe-suhoe-125",
+    "image": "https://api.vino-svoe.ru/v1/img/str-api/88/88/resize/uploads/Malbek2_20377afe87.webp"
   }
 ]

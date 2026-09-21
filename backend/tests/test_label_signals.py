@@ -120,3 +120,25 @@ class LabelColorTests(unittest.TestCase):
             True,
         )
         self.assertEqual(ranked[0]["slug"], "premium")
+
+    def test_bottle_match_beats_a_stronger_wrong_label_crop(self):
+        from app.label_signals import blend_candidates
+
+        catalog = WineCatalog.from_rows(
+            [
+                {"Slug": "relicta", "Название вина": "Реликта", "Винодельня": "Реликта"},
+                {"Slug": "flamingo", "Название вина": "Фламинго", "Винодельня": "Николаев и сыновья"},
+            ],
+            "https://example.com/",
+        )
+        ranked = blend_candidates(
+            [
+                {"slug": "relicta", "score": 0.829, "crop_score": 0.829, "full_score": 0.701},
+                {"slug": "flamingo", "score": 0.914, "crop_score": 0.597, "full_score": 0.914},
+            ],
+            catalog,
+            {},
+            "",
+            False,
+        )
+        self.assertEqual(ranked[0]["slug"], "flamingo")

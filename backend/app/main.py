@@ -276,6 +276,12 @@ def catalog_alternatives(slug: str) -> Dict[str, Any]:
 
 class SommelierRequest(BaseModel):
     occasion: str = Field(min_length=2, max_length=40)
+    color: Optional[str] = Field(default="any", max_length=20)
+    sweetness: Optional[str] = Field(default="any", max_length=20)
+    grape: Optional[str] = Field(default="", max_length=80)
+    region: Optional[str] = Field(default="", max_length=80)
+    alcohol_min: Optional[float] = Field(default=None, ge=0, le=30)
+    alcohol_max: Optional[float] = Field(default=None, ge=0, le=30)
     slug: Optional[str] = Field(default=None, max_length=300)
 
 
@@ -283,7 +289,17 @@ class SommelierRequest(BaseModel):
 def sommelier(body: SommelierRequest) -> Dict[str, Any]:
     service = require_service()
     current = service.catalog.get(body.slug) if body.slug else None
-    result = sommelier_reply(service.catalog, body.occasion, current)
+    result = sommelier_reply(
+        service.catalog,
+        body.occasion,
+        current,
+        color=body.color or "any",
+        sweetness=body.sweetness or "any",
+        grape=body.grape or "",
+        region=body.region or "",
+        alcohol_min=body.alcohol_min,
+        alcohol_max=body.alcohol_max,
+    )
     if result.get("error"):
         raise HTTPException(422, "Unknown occasion")
     return result

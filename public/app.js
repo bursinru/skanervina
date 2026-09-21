@@ -37,7 +37,8 @@ const catalogAssets = {
     'каберне фран': '/assets/catalog/grape-cabernet-franc.webp',
     'красностоп': '/assets/catalog/grape-krasnostop.webp',
     'мальвазия': '/assets/catalog/grape-malvaziya.webp',
-    'первенец магарача': '/assets/catalog/grape-pervenets-magaracha.webp'
+    'первенец магарача': '/assets/catalog/grape-pervenets-magaracha.webp',
+    'мальбек': '/assets/catalog/grape-malbec.webp'
   },
   dish: {
     'азиатская кухня': '/assets/catalog/dish-asian.webp',
@@ -69,7 +70,8 @@ const catalogAssets = {
     'мясное ассорти': '/assets/catalog/dish-meat-platter.webp',
     'кавказская кухня': '/assets/catalog/dish-meat-platter.webp',
     'bbq': '/assets/catalog/dish-meat-platter.webp',
-    'барбекю': '/assets/catalog/dish-meat-platter.webp'
+    'барбекю': '/assets/catalog/dish-meat-platter.webp',
+    'средиземноморская кухня': '/assets/catalog/dish-mediterranean.webp'
   }
 };
 const normalizeCatalogValue = value => String(value ?? '').trim().toLocaleLowerCase('ru-RU').replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -82,6 +84,9 @@ function catalogAsset(type, value) {
   return key ? safeImage(assets[key]) : '';
 }
 // Prefer the wine's catalog photo; only use a matching variety as fallback.
+const grapeBackdropAssets = {
+  'мальбек': '/assets/catalog/grape-malbec-wide.webp'
+};
 function grapeBackdrop(wine, grapes) {
   const supplied = safeImage(wine.grape_image_url);
   if (supplied) {
@@ -91,13 +96,18 @@ function grapeBackdrop(wine, grapes) {
     }
     return url.href;
   }
+  const wide = grapes.map(grape => grapeBackdropAssets[normalizeCatalogValue(grape)]).find(Boolean);
+  if (wide) return wide;
   return grapes.map(grape => catalogAsset('grape', grape)).find(Boolean) || '';
 }
 function wineTitle(name) {
   return escape(name).replace(/\s+(Appassimento)$/i, '<span class="wine-title-cuvee">$1</span>');
 }
 function ratingGlass() {
-  return '<svg class="rating-glass" viewBox="0 0 24 32" aria-hidden="true"><path class="glass-wine" d="M5 12h14l-.5 3a6.6 6.6 0 0 1-13 0z"/><path d="M6 3h12l1 11a7 7 0 0 1-14 0zM12 21v8M7 29h10"/></svg>';
+  return '<img class="rating-public-icon" src="/assets/public-rating.svg" alt="" width="32" height="32">';
+}
+function userRatingIcons() {
+  return '<span class="rating-icons" aria-hidden="true"><img class="rating-icon-glass" src="/assets/public-rating-empty.svg" alt="" width="40" height="40"><img class="rating-icon-wine" src="/assets/public-rating.svg" alt="" width="40" height="40"></span>';
 }
 function inferWineColor(wine) {
   const value = normalizeCatalogValue(`${wine.color || ''} ${wine.category || ''}`);
@@ -826,9 +836,12 @@ function showWine(wine, scanMeta = null, options = {}) {
   const aromaNotes = extractAromaNotes(wine);
   const fitMarkup = fitMarkupFor(wine);
   const scanDebugMarkup = scanMeta ? renderScanDebug(scanMeta) : '';
+  const grapeFactImage = grapes.map(grape => catalogAsset('grape', grape)).find(Boolean) || safeImage(wine.grape_image_url);
+  const colorNote = String(wine.color || '').trim();
   const visualFacts = [
     wine.region ? `<article class="visual-fact">${regionImage ? `<img src="${escape(regionImage)}" alt="" loading="lazy">` : ''}<div><small>РЕГИОН</small><strong>${escape(wine.region)}</strong></div></article>` : '',
-    (wine.category || wineColor) ? `<article class="visual-fact visual-fact-color color-tone-${colorTone(wineColor)}"><div><small>КАТЕГОРИЯ</small><strong>${escape(wine.category || 'Категория не указана')}</strong></div></article>` : ''
+    grapes.length ? `<article class="visual-fact">${grapeFactImage ? `<img src="${escape(grapeFactImage)}" alt="" loading="lazy">` : ''}<div><small>СОРТ</small><strong>${escape(grapes.join(', '))}</strong></div></article>` : '',
+    (wine.category || wineColor) ? `<article class="visual-fact visual-fact-color color-tone-${colorTone(wineColor)}"><div><small>КАТЕГОРИЯ И ЦВЕТ</small><strong>${escape(wine.category || wineColor || 'Категория не указана')}</strong>${colorNote && colorNote !== wine.category ? `<em>${escape(colorNote)}</em>` : ''}</div></article>` : ''
   ].filter(Boolean).join('');
   const dishImageUrls = Array.isArray(wine.dish_image_urls) ? wine.dish_image_urls : [];
   const dishCards = dishes.map((dish, index) => {
@@ -850,25 +863,56 @@ function showWine(wine, scanMeta = null, options = {}) {
     ${fitMarkup}
     <div class="result-split">
     <div class="result-taste"><section class="taste-profile" aria-labelledby="taste-profile-title"><div class="taste-profile-heading"><h2 id="taste-profile-title">Вкусовые свойства</h2><span>Оценка по данным каталога</span></div>${tasteDimensions.map(({ key, label }) => `<div class="taste-row"><span>${escape(label)}</span><i><em style="width:${tasteProfile[key] * 20}%"></em></i><b>${tasteProfile[key]}/5</b></div>`).join('')}</section>
-    <section class="rating-combo" aria-label="Ваша оценка вина"><div class="user-rating" aria-labelledby="user-rating-title"><p class="user-rating-cta" id="user-rating-title">Поставь свою оценку</p><div class="rating-options" role="radiogroup" aria-label="Оценка вина">${[1,2,3,4,5].map(value => `<button class="rating-option" type="button" role="radio" aria-checked="false" aria-label="${value} из 5" data-user-rating="${value}">${ratingGlass()}</button>`).join('')}</div><p class="rating-status" id="rating-status" hidden></p></div></section>
+    <section class="rating-combo" aria-label="Ваша оценка вина"><div class="user-rating" aria-labelledby="user-rating-title"><p class="user-rating-cta" id="user-rating-title">Поставь свою оценку</p><div class="rating-options" role="radiogroup" aria-label="Оценка вина">${[1,2,3,4,5].map(value => `<button class="rating-option" type="button" role="radio" aria-checked="false" aria-label="${value} из 5" data-user-rating="${value}">${userRatingIcons()}</button>`).join('')}</div><p class="rating-status" id="rating-status" hidden></p></div></section>
     <p class="wine-summary">${escape(wine.summary || wine.description || 'Описание пока не добавлено.')}</p><div class="taste-tags">${aromaNotes.map(tag => `<span>${escape(tag)}</span>`).join('')}</div></div>
-    ${dishes.length ? `<section class="dish-pairings"><div class="dish-pairings-heading"><div>${icon('utensils')}<h2>Сочетание с блюдами</h2></div><span>Из каталога «Своё Вино»</span></div><div class="dish-grid">${dishCards}</div></section>` : ''}
+    ${dishes.length ? `<section class="dish-pairings"><div class="dish-pairings-heading"><div>${icon('utensils')}<h2>Сочетание с блюдами</h2></div></div><div class="dish-grid">${dishCards}</div></section>` : ''}
     </div>
     </div>
     <section class="after-search" id="after-search">
-      <div class="dish-pairings-heading"><div>${icon('compare')}<h2>Российские аналоги</h2></div><span>Другие винодельни, похожий стиль</span></div>
+      <div class="dish-pairings-heading"><div>${icon('compare')}<h2>Похожие вина</h2></div></div>
       <p class="muted" id="alternatives-status">Подбираем вина из каталога…</p>
       <div class="alt-grid" id="alternatives-grid"></div>
-      <div class="dish-pairings-heading sommelier-heading"><div>${icon('utensils')}<h2>Цифровой сомелье</h2></div><span>К чему подбираете вино?</span></div>
-      <div class="food-buttons" id="sommelier-occasions">
-        <button type="button" data-occasion="fish">Рыба</button>
-        <button type="button" data-occasion="meat">Мясо</button>
-        <button type="button" data-occasion="cheese">Сыр</button>
-        <button type="button" data-occasion="dessert">Десерт</button>
-        <button type="button" data-occasion="aperitif">Просто выпить</button>
-      </div>
-      <p class="pairing-explanation" id="sommelier-hint">Выберите ситуацию — предложим российские вина из каталога.</p>
-      <div class="alt-grid" id="sommelier-grid"></div>
+      <section class="sommelier-panel" aria-label="Цифровой сомелье">
+        <div class="sommelier-hero">
+          <div>
+            <h2>Цифровой сомелье</h2>
+            <p class="sommelier-sub">Подберём вино за 3 шага</p>
+          </div>
+        </div>
+        <div class="sommelier-step">
+          <p class="sommelier-step-title"><span class="sommelier-num">1</span> С чем будете пить?</p>
+          <div class="food-buttons" id="sommelier-occasions">
+            <button type="button" data-occasion="fish">Рыба</button>
+            <button type="button" data-occasion="meat">Мясо</button>
+            <button type="button" data-occasion="cheese">Сыр</button>
+            <button type="button" data-occasion="dessert">Десерт</button>
+            <button type="button" data-occasion="aperitif">Без еды</button>
+          </div>
+        </div>
+        <div class="sommelier-step" id="sommelier-step-color" hidden>
+          <p class="sommelier-step-title"><span class="sommelier-num">2</span> Какое вино?</p>
+          <div class="food-buttons" id="sommelier-colors">
+            <button type="button" data-color="any">Любое</button>
+            <button type="button" data-color="white">Белое</button>
+            <button type="button" data-color="red">Красное</button>
+            <button type="button" data-color="rose">Розовое</button>
+            <button type="button" data-color="sparkling">Игристое</button>
+          </div>
+        </div>
+        <div class="sommelier-step" id="sommelier-step-sweet" hidden>
+          <p class="sommelier-step-title"><span class="sommelier-num">3</span> По вкусу?</p>
+          <div class="food-buttons" id="sommelier-sweetness">
+            <button type="button" data-sweetness="any">Любое</button>
+            <button type="button" data-sweetness="dry">Сухое</button>
+            <button type="button" data-sweetness="semi_dry">Полусухое</button>
+            <button type="button" data-sweetness="semi_sweet">Полусладкое</button>
+            <button type="button" data-sweetness="sweet">Сладкое</button>
+          </div>
+        </div>
+        <p class="sommelier-hint-card" id="sommelier-hint" hidden>Выберите, с чем будете пить — подберём вина из каталога.</p>
+        <p class="sommelier-found" id="sommelier-found" hidden></p>
+        <div class="alt-grid sommelier-grid" id="sommelier-grid"></div>
+      </section>
     </section>
     ${wine.demo ? `<section class="pairings"><div class="pairings-heading">${icon('utensils')}<h2>Что у вас на ужин?</h2></div><p class="muted">Выберите блюдо — подскажем, как оно сочетается с этим стилем вина.</p><div class="food-buttons"><button data-food="fish" aria-pressed="true">Рыба и морепродукты</button><button data-food="cheese" aria-pressed="false">Мягкий сыр</button><button data-food="salad" aria-pressed="false">Лёгкий салат</button><button data-food="steak" aria-pressed="false">Стейк</button><button data-food="dessert" aria-pressed="false">Десерт</button></div><p class="pairing-explanation" id="pairing-explanation"></p></section>` : ''}`;
   $('back-to-scanner').onclick = $('scan-again').onclick = backToScanner;
@@ -975,7 +1019,12 @@ function wineMiniCard(item) {
   const href = scannerHref(slug);
   const image = resolveImageUrl(item.image_url, item.photo_name || item.image_name);
   const score = formatScorePct(item.label_score);
-  return `<a class="alt-card" href="${escape(href)}" data-open-slug="${escape(slug)}">${image ? `<img src="${escape(image)}" alt="" loading="lazy">` : '<span class="dish-placeholder">Нет фото</span>'}<div><small>${escape(item.winery || '')}</small><strong>${escape(item.name || '')}</strong><em>${escape([item.category, item.region].filter(Boolean).join(' · '))}</em></div>${score ? `<span class="alt-card-score" aria-label="Сходство этикетки ${escape(score)}">${escape(score)}</span>` : ''}</a>`;
+  const reason = item.recommend_reason;
+  const rating = Number(item.public_rating);
+  const ratingMarkup = Number.isFinite(rating) && rating > 0
+    ? `<span class="sommelier-rating" aria-label="Оценка ${rating.toFixed(1)}">★ ${rating.toFixed(1)}</span>`
+    : '';
+  return `<a class="alt-card${reason ? ' sommelier-card' : ''}" href="${escape(href)}" data-open-slug="${escape(slug)}">${image ? `<img src="${escape(image)}" alt="" loading="lazy">` : '<span class="dish-placeholder">Нет фото</span>'}<div><small>${escape(item.winery || '')}</small><strong>${escape(item.name || '')}</strong><em>${escape([item.category, item.region].filter(Boolean).join(' · '))}</em>${reason ? `<span class="sommelier-reason">${escape(reason)}</span>` : ''}${ratingMarkup}</div>${score ? `<span class="alt-card-score" aria-label="Сходство этикетки ${escape(score)}">${escape(score)}</span>` : ''}</a>`;
 }
 function bindMiniCards(root, fallback) {
   root?.querySelectorAll('img').forEach(img => {
@@ -1023,24 +1072,64 @@ function bindAfterSearch(wine, scanMeta) {
   else if (wine.slug) {
     fetch(`/v1/catalog/${encodeURIComponent(wine.slug)}/alternatives`).then(r => r.ok ? r.json() : { items: [] }).then(data => renderAlts(data.items || [])).catch(() => renderAlts([]));
   } else renderAlts([]);
+  const sommelierState = { occasion: '', color: 'any', sweetness: 'any' };
+  let sommelierAbort = null;
+  const showSommelier = (id, on) => {
+    const node = $(id);
+    if (node) node.hidden = !on;
+  };
+  const askSommelier = () => {
+    if (!sommelierState.occasion) return;
+    showSommelier('sommelier-hint', true);
+    showSommelier('sommelier-found', true);
+    $('sommelier-hint').textContent = 'Подбираем…';
+    sommelierAbort?.abort();
+    sommelierAbort = new AbortController();
+    fetch('/v1/sommelier', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: sommelierAbort.signal,
+      body: JSON.stringify({
+        occasion: sommelierState.occasion,
+        color: sommelierState.color,
+        sweetness: sommelierState.sweetness,
+        slug: wine.slug || null,
+      }),
+    }).then(response => {
+      if (!response.ok) throw new Error('sommelier');
+      return response.json();
+    }).then(data => {
+      $('sommelier-hint').textContent = data.hint || '';
+      const found = Number(data.found) || (data.wines || []).length;
+      $('sommelier-found').textContent = found ? `Найдено ${found} вин` : 'Пока нет точных пар — ниже близкие варианты.';
+      $('sommelier-grid').innerHTML = (data.wines || []).map(wineMiniCard).join('');
+      bindMiniCards($('sommelier-grid'));
+    }).catch(error => {
+      if (error?.name === 'AbortError') return;
+      $('sommelier-hint').textContent = 'Сомелье сейчас недоступен. Можно выбрать блюдо из карточки выше.';
+    });
+  };
   document.querySelectorAll('#sommelier-occasions [data-occasion]').forEach(button => {
-    button.onclick = async () => {
+    button.onclick = () => {
+      sommelierState.occasion = button.dataset.occasion;
       document.querySelectorAll('#sommelier-occasions [data-occasion]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
-      $('sommelier-hint').textContent = 'Подбираем…';
-      try {
-        const response = await fetch('/v1/sommelier', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ occasion: button.dataset.occasion, slug: wine.slug || null }),
-        });
-        if (!response.ok) throw new Error('sommelier');
-        const data = await response.json();
-        $('sommelier-hint').textContent = data.hint || '';
-        $('sommelier-grid').innerHTML = (data.wines || []).map(wineMiniCard).join('');
-        bindMiniCards($('sommelier-grid'));
-      } catch {
-        $('sommelier-hint').textContent = 'Сомелье сейчас недоступен. Можно выбрать блюдо из карточки выше.';
-      }
+      showSommelier('sommelier-step-color', true);
+      askSommelier();
+    };
+  });
+  document.querySelectorAll('#sommelier-colors [data-color]').forEach(button => {
+    button.onclick = () => {
+      sommelierState.color = button.dataset.color || 'any';
+      document.querySelectorAll('#sommelier-colors [data-color]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+      showSommelier('sommelier-step-sweet', true);
+      askSommelier();
+    };
+  });
+  document.querySelectorAll('#sommelier-sweetness [data-sweetness]').forEach(button => {
+    button.onclick = () => {
+      sommelierState.sweetness = button.dataset.sweetness || 'any';
+      document.querySelectorAll('#sommelier-sweetness [data-sweetness]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+      askSommelier();
     };
   });
   if (debugMode && ranking) {

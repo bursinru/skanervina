@@ -155,10 +155,12 @@ def ocr_delta(text: str, wine: Optional[CatalogWine], reference_text: str = "") 
 
 
 def _visual_score(item: Mapping[str, Any]) -> float:
-    crop = item.get("crop_score")
-    if crop is not None:
-        return float(crop)
-    return float(item.get("siglip") or item.get("score") or 0.0)
+    scores = []
+    for key in ("crop_score", "full_score", "siglip", "score"):
+        value = item.get(key)
+        if value is not None:
+            scores.append(float(value))
+    return max(scores) if scores else 0.0
 
 
 def _lock_visual_leader(rows: list) -> list:
