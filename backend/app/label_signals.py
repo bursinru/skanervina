@@ -1,6 +1,7 @@
 """Cheap label-color and OCR extras on top of SigLIP cosine scores."""
 
 from typing import Any, Dict, Mapping, Optional, Sequence
+from difflib import SequenceMatcher
 
 import numpy as np
 from PIL import Image
@@ -114,14 +115,21 @@ def color_delta(features: Mapping[str, Any], wine: Optional[CatalogWine]) -> flo
     return 0.0
 
 
-def ocr_delta(text: str, wine: Optional[CatalogWine]) -> float:
+def ocr_delta(text: str, wine: Optional[CatalogWine], reference_text: str = "") -> float:
     if wine is None:
         return 0.0
     useful = {word for word in tokens(text) if len(word) >= 3 and word not in OCR_STOP}
-    catalog = {word for word in tokens(f"{wine.name} {wine.winery}") if len(word) >= 3 and word not in OCR_STOP}
+    catalog = {word for word in tokens(f"{wine.name} {wine.winery} {reference_text}") if len(word) >= 3 and word not in OCR_STOP}
     if len(useful) < 2 or not catalog:
         return 0.0
-    overlap = len(useful & catalog) / min(8, len(useful))
+    matched = {word for word in useful if word in catalog or (
+        len(word) >= 6 and word.isalpha() and any(
+            target.isalpha() and len(target) >= 6 and SequenceMatcher(None, word, target).ratio() >= .88
+            for target in catalog))}
+    # A shared vintage or grape alone is insufficient evidence for a bonus.
+    if len([word for word in matched if word.isalpha()]) < 2:
+        return 0.0
+    overlap = len(matched) / min(8, len(useful))
     return round(min(OCR_WEIGHT, overlap * OCR_WEIGHT), 4)
 
 
@@ -154,14 +162,18 @@ def blend_candidates(
     features: Mapping[str, Any],
     ocr_text: str,
     ocr_enabled: bool,
+    ocr_references=None,
 ) -> list:
     blended = []
     for item in candidates:
         slug = item.get("slug")
         siglip = float(item.get("score") or 0.0)
         wine = catalog.get(slug) if slug else None
-        color = color_delta(features, wine)
-        ocr = ocr_delta(ocr_text, wine) if ocr_enabled else 0.0
+        # Bottle/wine colour is not label colour. Keep it out of ranking until
+        # a query-label vs reference-label signal is independently validated.
+        color = 0.0
+        reference = (ocr_references or {}).get(slug, "")
+        ocr = ocr_delta(ocr_text, wine, reference) if ocr_enabled else 0.0
         score = max(0.0, min(1.0, siglip + color + ocr))
         blended.append(
             {
@@ -170,6 +182,8 @@ def blend_candidates(
                 "siglip": round(siglip, 4),
                 "color_delta": round(color, 4),
                 "ocr_delta": round(ocr, 4),
+                "ocr_reference_text": reference[:500],
+                "ocr_catalog_text": f"{wine.name} {wine.winery}" if wine else "",
                 "image_hash": item.get("image_hash"),
                 "full_score": item.get("full_score"),
                 "crop_score": item.get("crop_score"),

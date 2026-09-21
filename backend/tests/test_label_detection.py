@@ -8,6 +8,28 @@ from app.label_detection import crop_label, detect_label, enhance_label
 
 
 class LabelDetectionTests(unittest.TestCase):
+    def test_transparent_packshot_excludes_glass_and_preserves_illustration(self):
+        image = Image.open(Path(__file__).parent / 'fixtures/riesling-catalog.png')
+        detection = detect_label(image, catalog=True)
+        left, top, right, bottom = detection.bbox
+        self.assertGreater(top, .56)
+        self.assertLess(top, .65)
+        self.assertGreater(bottom, .90)
+        self.assertLess(bottom, .97)
+        self.assertGreater(right - left, .65)
+
+    def test_label_touching_light_table_keeps_brand_and_bottom(self):
+        image = Image.open(Path(__file__).parent / 'fixtures/riesling-table.png')
+        detection = detect_label(image)
+        left, top, right, bottom = detection.bbox
+        self.assertGreater(top, .50)
+        self.assertLess(top, .62)
+        self.assertGreater(bottom, .85)
+        self.assertLess(bottom, .93)
+        self.assertLess(left, .32)
+        self.assertGreater(right, .70)
+        self.assertLess(right - left, .60)
+
     QUERIES = Path(__file__).parents[2] / "Датасет" / "eval" / "queries"
 
     def test_detector_returns_a_valid_conservative_box(self):

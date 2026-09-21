@@ -17,6 +17,14 @@ NormalizedBox = Tuple[float, float, float, float]
 Quad = Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float]]
 
 
+def label_rgb(image):
+    image = ImageOps.exif_transpose(image)
+    if 'A' in image.getbands() or 'transparency' in image.info:
+        rgba = image.convert('RGBA')
+        return Image.alpha_composite(Image.new('RGBA', image.size, 'white'), rgba).convert('RGB')
+    return image.convert('RGB')
+
+
 @dataclass(frozen=True)
 class LabelDetection:
     bbox: NormalizedBox
@@ -661,7 +669,25 @@ def _connected_panel(pixels, *, catalog=False):
     scale = min(1., 320 / max(h, w))
     sw, sh = max(1, round(w * scale)), max(1, round(h * scale))
     paper = _paper_mask(pixels) | ((pixels.min(axis=2) > .85))
+    if catalog:
+        # Transparent packshots are often decoded onto pure white. That white
+        # must not join the paper panel to the image frame.
+        paper &= (pixels.min(axis=2) < .985) & (pixels.mean(axis=2) > .65)
     small = np.asarray(Image.fromarray(paper.astype('uint8') * 255).resize((sw, sh))) > 127
+    if not catalog:
+        # A table/wall can touch the label along one edge. Sever broad horizontal
+        # background bands before connected components, rather than rejecting the
+        # entire label as a component touching the frame.
+        for row in small:
+            if row[0]:
+                end = next((i for i, value in enumerate(row) if not value), sw)
+                row[:end] = False
+            if row[-1]:
+                start = next((i for i in range(sw - 1, -1, -1) if not row[i]), -1)
+                row[start + 1:] = False
+            left, right = _longest_run(row)
+            if right - left > sw * .72:
+                row[left:right] = False
     small = _dilate(_erode(small, 4), 4)
     small = _close(small, 2)
     visited = np.zeros_like(small)
@@ -695,6 +721,20 @@ def _connected_panel(pixels, *, catalog=False):
     # Trace within this component's box; retain dark printed artwork inside it.
     mask = _close(paper, 3)
     l,t,r,b = box
+    if catalog:
+        # Narrow reflections above/below the paper are not part of the label.
+        density = _smooth(small[t:b, l:r].mean(axis=1), 5)
+        occupied = np.flatnonzero(density > max(.35, float(density.max()) * .55))
+        if occupied.size and occupied[-1] - occupied[0] >= (b - t) * .4:
+            t, b = t + int(occupied[0]), t + int(occupied[-1]) + 1
+    # Recover dark printed artwork below the bright core, or the lower panel
+    # after cutting a table connection. Follow its interior until dark glass.
+    recovery = _paper_mask(pixels)
+    original_small = np.asarray(Image.fromarray(recovery.astype('uint8') * 255).resize((sw, sh))) > 127
+    inset = max(1, (r - l) // 4)
+    limit = min(sh - 1, b + (b - t))
+    while b < limit and original_small[b, l + inset:r - inset].mean() > .55:
+        b += 1
     box = (max(0,int((l-3)/sw*w)),max(0,int((t-3)/sh*h)),min(w,int((r+3)/sw*w)),min(h,int((b+3)/sh*h)))
     return mask, box
 
@@ -702,7 +742,7 @@ def _connected_panel(pixels, *, catalog=False):
 def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection:
     """Return a padded bbox around the likely front label, not a drawing crop."""
 
-    prepared = ImageOps.exif_transpose(image).convert("RGB")
+    prepared = label_rgb(image)
     prepared.thumbnail((720, 960), Image.Resampling.BILINEAR)
     pixels = np.asarray(prepared, dtype=np.float32) / 255.0
     gray = pixels.mean(axis=2)
@@ -850,7 +890,7 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
 def crop_label(image: Image.Image, detection: LabelDetection) -> Image.Image:
     """Crop a detected label, unwarping a paper quad when corners are reliable."""
 
-    image = ImageOps.exif_transpose(image).convert("RGB")
+    image = label_rgb(image)
     if detection.contour:
         mask = Image.new("L", image.size)
         ImageDraw.Draw(mask).polygon([(x * image.width, y * image.height) for x, y in detection.contour], fill=255)

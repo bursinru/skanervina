@@ -9,7 +9,7 @@ from psycopg.types.json import Jsonb
 from .catalog import WineCatalog
 from .database import connect, migrate
 from .settings import settings
-from .label_detection import crop_label, detect_label
+from .label_detection import crop_label, detect_label, label_rgb
 
 EXTRA_SUFFIXES = {'.jpg', '.jpeg', '.png', '.webp'}
 CROP_AREA_MAX = 0.92
@@ -159,7 +159,7 @@ def main():
         for item in pending[offset:offset + args.batch_size]:
             try:
                 with Image.open(item[1]) as im:
-                    rgb = ImageOps.exif_transpose(im).convert('RGB')
+                    rgb = label_rgb(im)
                 if item[3] == 'crop':
                     cropped = label_crop_if_useful(rgb)
                     if cropped is None:

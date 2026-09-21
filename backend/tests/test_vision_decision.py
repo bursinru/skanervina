@@ -220,15 +220,16 @@ class RerankTests(unittest.TestCase):
         Image.new('RGB', (80, 120), (240, 228, 200)).save(output, format='PNG')
         self.photo = output.getvalue()
 
-    def test_label_color_adds_percentage_points(self):
+    def test_wine_color_does_not_change_ranking(self):
         self.recognizer.visual.search.return_value = [
             {'slug': 'red', 'score': 0.783},
             {'slug': 'white', 'score': 0.782},
         ]
         result = self.recognizer.recognize(self.photo)
-        self.assertEqual(result['slug'], 'white')
-        self.assertGreater(result['recognition']['color_delta'], 0)
-        self.assertEqual(result['ranking']['top5'][1]['slug'], 'red')
+        self.assertEqual(result['slug'], 'red')
+        self.assertEqual(result['recognition']['color_delta'], 0)
+        self.assertFalse(result['recognition']['color_enabled'])
+        self.assertEqual(result['ranking']['top5'][1]['slug'], 'white')
         self.assertEqual(result['ranking']['top5'][1]['color_delta'], 0)
 
     def test_ocr_adds_percentage_points_when_enabled(self):

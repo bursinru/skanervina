@@ -6,11 +6,13 @@ from io import BytesIO
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .catalog import WineCatalog, normalize
-from .label_detection import crop_label, detect_label, enhance_label
+from .label_detection import crop_label, detect_label, enhance_label, label_rgb
 from .label_signals import blend_candidates, crop_color_features
 from .ranking import distinct_margin, is_visual_match, ranking_metrics, same_label_family
 from .recommend import alternatives as recommend_alternatives
 from .settings import Settings
+from .label_ocr import read_label, load_references
+from pathlib import Path
 
 
 class Recognizer:
@@ -31,6 +33,7 @@ class Recognizer:
     def __init__(self, catalog: WineCatalog, settings: Settings):
         self.catalog = catalog
         self.settings = settings
+        self.ocr_references = load_references(os.getenv('CATALOG_OCR_INDEX', str(Path(__file__).resolve().parents[1] / 'data/catalog-ocr.json')), settings.ocr_languages)
         self.visual = None
         self.visual_status = 'disabled'
         self._catalog_crop_cache: Dict[str, Optional[str]] = {}
@@ -69,13 +72,7 @@ class Recognizer:
             with Image.open(BytesIO(image_bytes)) as image:
                 image.load()
                 image = ImageOps.exif_transpose(image)
-                image.thumbnail((1000, 1000))
-                text = pytesseract.image_to_string(
-                    image.convert("RGB"),
-                    lang=self.settings.ocr_languages,
-                    config=f"--psm {psm}",
-                    timeout=20,
-                )
+                text = read_label(image, self.settings.ocr_languages, psm)
             return text.strip(), "ok"
         except Exception:
             return "", "failed"
@@ -221,7 +218,7 @@ class Recognizer:
                 text, ocr_status = self._ocr(self._image_bytes(work_image), psm=6)
                 ocr_ms = (perf_counter() - ocr_started) * 1000
                 text_matches = self._text_matches(text)
-            ranked = blend_candidates(candidates, self.catalog, color_features, text, ocr_enabled)
+            ranked = blend_candidates(candidates, self.catalog, color_features, text, ocr_enabled, self.ocr_references)
             best = ranked[0]
             wine = self.catalog.get(best['slug'])
             runner = self.catalog.get(ranked[1]['slug']) if len(ranked) > 1 else None
@@ -262,6 +259,9 @@ class Recognizer:
                 ocr_corroborated=corroborated,
                 ocr_text=text[:500],
                 ocr_enabled=bool(ocr_enabled),
+                color_enabled=False,
+                ocr_reference_count=len(self.ocr_references),
+                ocr_comparison='name + winery + precomputed label text',
                 threshold=threshold,
                 min_margin=min_margin,
                 clear_match=clear_match,
@@ -276,6 +276,8 @@ class Recognizer:
                     "siglip": item.get("siglip"),
                     "color_delta": item.get("color_delta"),
                     "ocr_delta": item.get("ocr_delta"),
+                    "ocr_reference_text": item.get("ocr_reference_text") if include_candidates else None,
+                    "ocr_catalog_text": item.get("ocr_catalog_text") if include_candidates else None,
                     "image_hash": item.get("image_hash"),
                     "image_url": (self.catalog.get(item["slug"]).image_url if self.catalog.get(item["slug"]) else None),
                     "full_score": item.get("full_score"),
@@ -350,7 +352,7 @@ class Recognizer:
         scored = self.visual.score_slug(work_image, slug)
         if not scored:
             return {"slug": slug, "name": wine.name, "winery": wine.winery, "image_url": wine.image_url, "missing": True}
-        blended = blend_candidates([scored], self.catalog, color_features, text, ocr_enabled)
+        blended = blend_candidates([scored], self.catalog, color_features, text, ocr_enabled, self.ocr_references)
         views = self._compare_views(blended, with_catalog_crops=True)
         return views[0] if views else None
 
@@ -405,7 +407,7 @@ class Recognizer:
         if not path.is_file():
             return None
         with Image.open(path) as opened:
-            return ImageOps.exif_transpose(opened).convert("RGB")
+            return label_rgb(opened)
 
     def _catalog_file_names(self, wine) -> List[str]:
         from urllib.parse import unquote, urlparse
@@ -448,14 +450,14 @@ class Recognizer:
                 path = folder / name
                 if path.is_file():
                     with Image.open(path) as opened:
-                        return ImageOps.exif_transpose(opened).convert("RGB")
+                        return label_rgb(opened)
         root = Path("/catalog")
         if names and root.is_dir():
             for name in names:
                 match = next(root.rglob(name), None)
                 if match and match.is_file():
                     with Image.open(match) as opened:
-                        return ImageOps.exif_transpose(opened).convert("RGB")
+                        return label_rgb(opened)
         url = wine.image_url
         if not url or not url.startswith("http"):
             return None
@@ -465,7 +467,7 @@ class Recognizer:
         if not payload or len(payload) > self.settings.max_image_bytes:
             return None
         with Image.open(BytesIO(payload)) as opened:
-            return ImageOps.exif_transpose(opened).convert("RGB")
+            return label_rgb(opened)
 
     def _ocr_result(self, text, ocr_status, metrics, ocr_ms=0.0, include_candidates=False):
         metrics['ocr'] = ocr_status

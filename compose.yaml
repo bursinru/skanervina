@@ -22,6 +22,7 @@ services:
       CATALOG_CSV: /catalog/strapi_output0709_enriched.csv
       CATALOG_IMAGES: /catalog/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads
       CATALOG_LABEL_CROPS: /catalog/label-crops
+      CATALOG_OCR_INDEX: /catalog/catalog-ocr.json
       STATIC_DIR: /app/public
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       CV_ENABLED: "true"

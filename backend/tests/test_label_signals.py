@@ -7,6 +7,20 @@ from app.label_signals import color_delta, crop_color_features, wine_tone
 
 
 class LabelColorTests(unittest.TestCase):
+    def test_ocr_uses_reference_label_and_tolerates_one_missing_letter(self):
+        from app.label_signals import ocr_delta
+        wine = WineCatalog.from_rows([{'Slug': 'test', 'Название вина': 'Рислинг',
+            'Винодельня': 'Другое имя'}], 'https://example.com/').get('test')
+        self.assertEqual(ocr_delta('КАЛИСТЫЙ БЕРЕГ 2024 Рислинг', wine), 0)
+        self.assertGreater(ocr_delta('КАЛИСТЫЙ БЕРЕГ 2024 Рислинг', wine,
+                                    'СКАЛИСТЫЙ БЕРЕГ Рислинг'), 0)
+
+    def test_grape_and_year_alone_do_not_identify_wine(self):
+        from app.label_signals import ocr_delta
+        wine = WineCatalog.from_rows([{'Slug': 'test', 'Название вина': 'Рислинг 2024',
+            'Винодельня': 'Скалистый берег'}], 'https://example.com/').get('test')
+        self.assertEqual(ocr_delta('Рислинг 2024', wine), 0)
+
     def setUp(self):
         self.catalog = WineCatalog.from_rows(
             [
