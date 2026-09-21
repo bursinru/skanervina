@@ -18,6 +18,12 @@ def best_by_slug(rows, limit=5):
     return sorted(best.values(), key=lambda item: item['score'], reverse=True)[:limit]
 
 
+def merge_query_views(crop_rows, full_rows, limit=8):
+    """Keep the stronger of a label-crop query and a full-bottle query per slug."""
+
+    return best_by_slug(list(crop_rows) + list(full_rows), limit)
+
+
 def split_full_crop(rows):
     """Bottle photos vs catalog label crops. Crops are hashed as sha256('crop:' + file digest)."""
 

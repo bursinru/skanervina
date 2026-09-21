@@ -12,6 +12,7 @@ from .ranking import distinct_margin, is_visual_match, ranking_metrics, same_lab
 from .recommend import alternatives as recommend_alternatives
 from .settings import Settings
 from .label_ocr import read_label, load_references
+from .vision import merge_query_views
 from pathlib import Path
 
 
@@ -200,6 +201,8 @@ class Recognizer:
         if self.visual:
             visual_started = perf_counter()
             candidates = self.visual.search(work_image, limit=8)
+            if work_image is not image:
+                candidates = merge_query_views(candidates, self.visual.search(image, limit=8), limit=8)
             visual_ms = (perf_counter() - visual_started) * 1000
             if not candidates:
                 metrics = base_metrics("siglip2+pgvector")

@@ -13,6 +13,9 @@ __pycache__/
 # OS/editor noise
 .DS_Store
 
+# Eval dumps, crop previews and local recognition reports (do not commit to GitHub)
+reports/
+
 # Large local datasets and extracted media (do not commit to GitHub)
 Датасет/
 **/datasets/

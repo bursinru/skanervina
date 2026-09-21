@@ -155,11 +155,50 @@ class LabelDetectionTests(unittest.TestCase):
         self.assertGreater(max(xs) - min(xs), .33)
         self.assertGreater(max(ys) - min(ys), .23)
 
+    def test_gallery_shot_keeps_the_white_label_not_the_shelf(self):
+        image = Image.open(Path(__file__).parents[2] / "Датасет/yandex-real-eval/41-risling.jpg")
+        detection = detect_label(image)
+        cropped = crop_label(image, detection)
+        self.assertGreater(np.asarray(cropped).mean(), 140)
+        self.assertGreater(detection.bbox[1], 0.45)
+        self.assertLess(detection.bbox[0], 0.45)
+        self.assertGreater(detection.bbox[2], 0.55)
+
+    def test_closeup_does_not_crop_the_left_glass_strip(self):
+        image = Image.open(Path(__file__).parents[2] / "Датасет/yandex-real-eval/48-usadba-markoth-kyuve-blan-shardone-beloe-suhoe-12.jpg")
+        detection = detect_label(image)
+        self.assertGreater(detection.bbox[2] - detection.bbox[0], 0.55)
+        self.assertLess(detection.bbox[0], 0.15)
+        cropped = crop_label(image, detection)
+        self.assertGreater(np.asarray(cropped).mean(), 150)
+
+    def test_printed_on_glass_rose_keeps_the_front_bottle(self):
+        image = Image.open(Path(__file__).parents[2] / "Датасет/yandex-real-eval/10-roze-1.jpg")
+        detection = detect_label(image)
+        cx = (detection.bbox[0] + detection.bbox[2]) / 2
+        self.assertLess(abs(cx - 0.5), 0.22)
+        self.assertGreater(detection.bbox[3] - detection.bbox[1], 0.16)
+        self.assertIn(detection.method, {"amber_panel", "full_frame", "label_panel", "paper_band", "connected_paper", "paper_quad"})
+        if detection.method != "full_frame":
+            self.assertGreater(detection.bbox[1], 0.35)
+
+    def test_rkatsiteli_closeup_keeps_the_left_of_the_label(self):
+        image = Image.open(Path(__file__).parents[2] / "Датасет/yandex-real-eval/23-loco-cimbali-rkatsiteli-oranzhevoe-suhoe-13.jpg")
+        detection = detect_label(image)
+        self.assertLess(detection.bbox[0], 0.12)
+        self.assertGreater(detection.bbox[3] - detection.bbox[1], 0.22)
+
     def test_catalog_label_can_touch_both_sides(self):
         image = Image.open(Path(__file__).parents[2] / "Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads/loco_cimbali_oranzh_muskat_oranzhevoe_suhoe_127_dc98a21033.webp")
         detection = detect_label(image, catalog=True)
         self.assertGreater(detection.bbox[1], .60)
         self.assertLess(detection.bbox[3] - detection.bbox[1], .38)
+        self.assertLess(detection.bbox[0], .20)
+        self.assertGreater(detection.bbox[2], .62)
+        self.assertGreater(detection.bbox[2] - detection.bbox[0], .50)
+        cropped = crop_label(image, detection)
+        self.assertGreater(cropped.width, 200)
+        self.assertGreater(cropped.width / max(1, cropped.height), 0.55)
         self.assertIsNotNone(detection.contour)
 
     def test_tall_product_shot_crops_the_label_band(self):

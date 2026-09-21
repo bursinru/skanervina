@@ -52,6 +52,32 @@ class LabelColorTests(unittest.TestCase):
         self.assertGreaterEqual(orange, 0.0)
         self.assertGreaterEqual(orange, red)
 
+    def test_orange_print_prefers_orange_wine_over_white_sibling(self):
+        from app.label_signals import blend_candidates, crop_color_features
+
+        catalog = WineCatalog.from_rows(
+            [
+                {"Slug": "orange", "Название вина": "Оранж Мускат", "Винодельня": "Loco Cimbali", "svoe_vino_color": "Оранжевое сухое"},
+                {"Slug": "white", "Название вина": "Оранж Мускат белый", "Винодельня": "Loco Cimbali", "svoe_vino_color": "Белое сухое"},
+            ],
+            "https://example.com/",
+        )
+        image = Image.new("RGB", (160, 180), (236, 226, 208))
+        for x in range(70, 150):
+            for y in range(40, 160):
+                image.putpixel((x, y), (196, 92, 42))
+        ranked = blend_candidates(
+            [
+                {"slug": "white", "score": 0.916, "crop_score": 0.916},
+                {"slug": "orange", "score": 0.834, "crop_score": 0.834},
+            ],
+            catalog,
+            crop_color_features(image),
+            "",
+            False,
+        )
+        self.assertEqual(ranked[0]["slug"], "orange")
+
     def test_orange_name_is_orange_tone(self):
         self.assertEqual(wine_tone(self.catalog.get("orange")), "orange")
 
@@ -72,3 +98,25 @@ class LabelColorTests(unittest.TestCase):
         self.assertEqual(ranked[0]["slug"], "orange")
         self.assertGreaterEqual(ranked[0]["color_delta"], 0.0)
         self.assertGreaterEqual(ranked[1]["color_delta"], 0.0)
+
+    def test_ocr_can_keep_a_near_sibling_over_visual_lock(self):
+        from app.label_signals import blend_candidates
+
+        catalog = WineCatalog.from_rows(
+            [
+                {"Slug": "premium", "Название вина": "Каберне Фран Премиум", "Винодельня": "Шато де Талю"},
+                {"Slug": "reserve", "Название вина": "Каберне Фран Резерв", "Винодельня": "Шато де Талю"},
+            ],
+            "https://example.com/",
+        )
+        ranked = blend_candidates(
+            [
+                {"slug": "reserve", "score": 0.857, "crop_score": 0.857},
+                {"slug": "premium", "score": 0.824, "crop_score": 0.824},
+            ],
+            catalog,
+            {},
+            "Каберне Фран Премиум",
+            True,
+        )
+        self.assertEqual(ranked[0]["slug"], "premium")

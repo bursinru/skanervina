@@ -8,7 +8,7 @@ from PIL import Image
 
 from .catalog import CatalogWine, normalize, tokens
 
-COLOR_WEIGHT = 0.04
+COLOR_WEIGHT = 0.05
 OCR_WEIGHT = 0.12
 VISUAL_LOCK = 0.02
 OCR_STOP = {
@@ -37,16 +37,23 @@ OCR_STOP = {
 def wine_tone(wine: Optional[CatalogWine]) -> str:
     if wine is None:
         return "unknown"
-    blob = normalize(f"{wine.color} {wine.category} {wine.name}")
-    if "роз" in blob or "rose" in blob:
-        return "rose"
-    if "оранж" in blob or "orange" in blob:
-        return "orange"
-    if "красн" in blob or "red" in blob:
-        return "red"
-    if "бел" in blob or "white" in blob:
-        return "white"
-    return "unknown"
+
+    def from_blob(blob: str) -> str:
+        if "роз" in blob or "rose" in blob:
+            return "rose"
+        if "оранж" in blob or "orange" in blob:
+            return "orange"
+        if "красн" in blob or "red" in blob:
+            return "red"
+        if "бел" in blob or "white" in blob:
+            return "white"
+        return "unknown"
+
+    # Official colour beats a brand line that says "Orange" on a white wine.
+    tone = from_blob(normalize(wine.color))
+    if tone != "unknown":
+        return tone
+    return from_blob(normalize(f"{wine.category} {wine.name}"))
 
 
 def crop_color_features(image: Image.Image) -> Dict[str, Any]:
@@ -71,6 +78,15 @@ def crop_color_features(image: Image.Image) -> Dict[str, Any]:
         ).mean()
     )
     pale_liquid = float(((brightness > 0.58) & (green + blue > red * 1.05) & (saturation < 0.35)).mean())
+    orange_print = float(
+        (
+            (red > 0.35)
+            & (red > green + 0.08)
+            & (red > blue + 0.12)
+            & (luminance > 0.22)
+            & (luminance < 0.72)
+        ).mean()
+    )
     if paper == "cream" or (paper == "mixed" and brightness >= 0.52 and pale_liquid >= 0.12):
         bottle_tone = "unknown"
     elif orange_liquid >= 0.08 and orange_liquid >= red_liquid:
@@ -83,35 +99,40 @@ def crop_color_features(image: Image.Image) -> Dict[str, Any]:
         bottle_tone = "rose"
     else:
         bottle_tone = "unknown"
+    if orange_print >= 0.05:
+        print_tone = "orange"
+    elif orange_liquid >= 0.05:
+        print_tone = "orange"
+    elif red_liquid >= 0.08:
+        print_tone = "red"
+    else:
+        print_tone = "unknown"
     return {
         "brightness": round(brightness, 4),
         "saturation": round(saturation, 4),
         "paper": paper,
         "bottle_tone": bottle_tone,
+        "print_tone": print_tone,
         "red_fraction": round(red_liquid, 4),
         "pale_fraction": round(pale_liquid, 4),
         "orange_fraction": round(orange_liquid, 4),
+        "orange_print_fraction": round(orange_print, 4),
     }
 
 
 def color_delta(features: Mapping[str, Any], wine: Optional[CatalogWine]) -> float:
     tone = wine_tone(wine)
     bottle = str(features.get("bottle_tone") or "unknown")
+    print_tone = str(features.get("print_tone") or "unknown")
     paper = str(features.get("paper") or "mixed")
     if tone == "unknown":
         return 0.0
-    if bottle == tone or (bottle == "white" and tone == "orange") or (bottle == "orange" and tone == "white"):
-        return COLOR_WEIGHT
-    if bottle == "unknown":
-        if paper == "cream" and tone in {"white", "orange", "rose"}:
-            return COLOR_WEIGHT * 0.35
-        if paper == "dark" and tone == "red":
-            return COLOR_WEIGHT * 0.2
-        return 0.0
-    if tone == "orange" and bottle == "red":
-        return 0.0
-    if {bottle, tone} == {"white", "rose"}:
-        return 0.0
+    # Paint on a cream label (orange dress, ochre type) is about the wine, not the glass.
+    if print_tone == "orange":
+        if tone == "orange":
+            return COLOR_WEIGHT
+        if tone in {"white", "red"}:
+            return -COLOR_WEIGHT
     return 0.0
 
 
@@ -152,6 +173,17 @@ def _lock_visual_leader(rows: list) -> list:
     runner = max(others, key=_visual_score)
     if _visual_score(leader) < _visual_score(runner) + VISUAL_LOCK:
         return rows
+    ocr_best = max(rows, key=lambda row: float(row.get("ocr_delta") or 0.0))
+    if float(ocr_best.get("ocr_delta") or 0.0) >= 0.06 and ocr_best.get("slug") != leader.get("slug"):
+        if _visual_score(leader) - _visual_score(ocr_best) <= 0.05:
+            return rows
+    color_best = max(rows, key=lambda row: float(row.get("color_delta") or 0.0))
+    if (
+        float(leader.get("color_delta") or 0.0) < 0
+        and float(color_best.get("color_delta") or 0.0) > 0
+        and _visual_score(leader) - _visual_score(color_best) <= 0.10
+    ):
+        return rows
     rest = sorted(others, key=lambda row: row["score"], reverse=True)
     return [leader] + rest
 
@@ -169,9 +201,7 @@ def blend_candidates(
         slug = item.get("slug")
         siglip = float(item.get("score") or 0.0)
         wine = catalog.get(slug) if slug else None
-        # Bottle/wine colour is not label colour. Keep it out of ranking until
-        # a query-label vs reference-label signal is independently validated.
-        color = 0.0
+        color = color_delta(features, wine)
         reference = (ocr_references or {}).get(slug, "")
         ocr = ocr_delta(ocr_text, wine, reference) if ocr_enabled else 0.0
         score = max(0.0, min(1.0, siglip + color + ocr))

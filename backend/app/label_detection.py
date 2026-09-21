@@ -67,6 +67,97 @@ def _paper_mask(pixels: np.ndarray) -> np.ndarray:
     return light_paper & warm
 
 
+def _usable_label_box(pixels: np.ndarray, box: Sequence[int]) -> bool:
+    """Drop dark glass, blurry shelf bottles and textureless cardboard."""
+
+    height, width = pixels.shape[:2]
+    left, top, right, bottom = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
+    left = max(0, min(width - 1, left))
+    right = max(left + 1, min(width, right))
+    top = max(0, min(height - 1, top))
+    bottom = max(top + 1, min(height, bottom))
+    region = pixels[top:bottom, left:right]
+    gray = region.mean(axis=2)
+    mean = float(gray.mean())
+    std = float(gray.std())
+    if mean < 0.40 or std < 0.07:
+        return False
+    area = ((right - left) / width) * ((bottom - top) / height)
+    centre_x = (left + right) / 2 / width
+    if area < 0.06 and abs(centre_x - 0.5) > 0.20:
+        return False
+    width_frac = (right - left) / width
+    height_frac = (bottom - top) / height
+    if height_frac < width_frac and left > width * 0.40:
+        paper = _paper_mask(pixels)
+        if float(paper[top:bottom, :left].mean()) > 0.22:
+            return False
+    return True
+
+
+def _amber_panel(pixels: np.ndarray):
+    """Gold/orange labels printed on glass, not cream paper stock."""
+
+    red, green, blue = pixels[:, :, 0], pixels[:, :, 1], pixels[:, :, 2]
+    value = np.maximum(np.maximum(red, green), blue)
+    minimum = np.minimum(np.minimum(red, green), blue)
+    saturation = np.where(value > 1e-4, 1.0 - minimum / np.maximum(value, 1e-4), 0.0)
+    amber = (red > green + 0.04) & (red > blue + 0.10) & (saturation > 0.32) & (value > 0.40) & (value < 0.90)
+    height, width = amber.shape
+    if float(amber.mean()) < 0.004:
+        return None
+    small_w, small_h = max(24, width // 8), max(32, height // 8)
+    small = np.array(Image.fromarray(amber.astype(np.uint8) * 255).resize((small_w, small_h), Image.Resampling.NEAREST)) > 127
+    small = _close(_erode(small, 1), 2)
+    visited = np.zeros_like(small)
+    best = None
+    for sy, sx in zip(*np.where(small)):
+        if visited[sy, sx]:
+            continue
+        stack = [(int(sx), int(sy))]
+        points = []
+        visited[sy, sx] = True
+        while stack:
+            x, y = stack.pop()
+            points.append((x, y))
+            for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+                if 0 <= nx < small_w and 0 <= ny < small_h and small[ny, nx] and not visited[ny, nx]:
+                    visited[ny, nx] = True
+                    stack.append((nx, ny))
+        if len(points) < small_w * small_h * 0.012:
+            continue
+        pts = np.asarray(points)
+        left_s, top_s = pts.min(axis=0)
+        right_s, bottom_s = pts.max(axis=0) + 1
+        bw, bh = right_s - left_s, bottom_s - top_s
+        if bw < small_w * 0.08 or bh < small_h * 0.06:
+            continue
+        scale_x, scale_y = width / small_w, height / small_h
+        box = (
+            max(0, round(left_s * scale_x)),
+            max(0, round(top_s * scale_y)),
+            min(width, round(right_s * scale_x)),
+            min(height, round(bottom_s * scale_y)),
+        )
+        area = ((box[2] - box[0]) / width) * ((box[3] - box[1]) / height)
+        centre_x = (box[0] + box[2]) / 2 / width
+        centre_y = (box[1] + box[3]) / 2 / height
+        if area < 0.012 or area > 0.22 or centre_x < 0.28 or centre_x > 0.72 or centre_y < 0.40 or centre_y > 0.82:
+            continue
+        score = len(points) * (1 - abs(centre_x - 0.5))
+        if best is None or score > best[0]:
+            best = (score, box)
+    if best is None:
+        return None
+    left, top, right, bottom = best[1]
+    band = pixels[top:bottom, left:right]
+    row_value = band.max(axis=2).mean(axis=1)
+    keep = np.flatnonzero(row_value > max(0.45, float(row_value.max()) * 0.62))
+    if keep.size:
+        top, bottom = top + int(keep[0]), top + int(keep[-1]) + 1
+    return left, top, right, bottom
+
+
 def _dilate(mask: np.ndarray, radius: int) -> np.ndarray:
     size = radius * 2 + 1
     image = Image.fromarray((mask.astype(np.uint8) * 255))
@@ -671,8 +762,19 @@ def _connected_panel(pixels, *, catalog=False):
     paper = _paper_mask(pixels) | ((pixels.min(axis=2) > .85))
     if catalog:
         # Transparent packshots are often decoded onto pure white. That white
-        # must not join the paper panel to the image frame.
-        paper &= (pixels.min(axis=2) < .985) & (pixels.mean(axis=2) > .65)
+        # must not join the paper panel to the image frame.  Orange/ochre print
+        # on the same sticker is still the panel, not glass.
+        cream = paper & (pixels.min(axis=2) < .985) & (pixels.mean(axis=2) > .58)
+        studio = float(_studio_background(pixels).mean())
+        if studio >= 0.10:
+            painted = (
+                (pixels.mean(axis=2) > .18)
+                & (pixels.mean(axis=2) < .72)
+                & ~_studio_background(pixels)
+            )
+            paper = cream | (_dilate(cream, 12) & painted)
+        else:
+            paper = cream
     small = np.asarray(Image.fromarray(paper.astype('uint8') * 255).resize((sw, sh))) > 127
     if not catalog:
         # A table/wall can touch the label along one edge. Sever broad horizontal
@@ -729,13 +831,41 @@ def _connected_panel(pixels, *, catalog=False):
             t, b = t + int(occupied[0]), t + int(occupied[-1]) + 1
     # Recover dark printed artwork below the bright core, or the lower panel
     # after cutting a table connection. Follow its interior until dark glass.
-    recovery = _paper_mask(pixels)
+    recovery = paper if catalog else _paper_mask(pixels)
     original_small = np.asarray(Image.fromarray(recovery.astype('uint8') * 255).resize((sw, sh))) > 127
     inset = max(1, (r - l) // 4)
     limit = min(sh - 1, b + (b - t))
     while b < limit and original_small[b, l + inset:r - inset].mean() > .55:
         b += 1
+    if catalog:
+        right_limit = min(sw - 1, r + max(4, (r - l) // 2), l + max(r - l, int(sw * 0.55)))
+        while r < right_limit and original_small[t + max(1, (b - t) // 6): b - max(1, (b - t) // 6), min(sw - 1, r)].mean() > .18:
+            r += 1
+        left_limit = max(0, r - max(r - l, int(sw * 0.55)))
+        while l > left_limit and original_small[t + max(1, (b - t) // 6): b - max(1, (b - t) // 6), l - 1].mean() > .18:
+            l -= 1
+    if not catalog:
+        ceiling = max(0, t - max(3, (b - t) // 3))
+        while t > ceiling and original_small[t - 1, l + inset:r - inset].mean() > .28:
+            t -= 1
     box = (max(0,int((l-3)/sw*w)),max(0,int((t-3)/sh*h)),min(w,int((r+3)/sw*w)),min(h,int((b+3)/sh*h)))
+    if catalog:
+        left, top, right, bottom = box
+        painted = (
+            (pixels[:, :, 0] > pixels[:, :, 2] + 0.08)
+            & (pixels[:, :, 0] > 0.28)
+            & (pixels.mean(axis=2) < 0.78)
+            & ~_studio_background(pixels)
+        )
+        mid_top = top + max(1, (bottom - top) // 6)
+        mid_bottom = bottom - max(1, (bottom - top) // 6)
+        right_limit = min(w, left + max(right - left, int(w * 0.72)))
+        while right < right_limit and float(painted[mid_top:mid_bottom, min(w - 1, right)].mean()) > 0.04:
+            right += 1
+        band = np.zeros_like(mask)
+        band[top:bottom, left:min(w, right + 2)] = True
+        mask = mask | (painted & band)
+        box = (left, top, right, bottom)
     return mask, box
 
 
@@ -845,12 +975,38 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
                 round(height * 0.78),
             )
             best_box = _cover_and_trim(filled, best_box)
+    scored_box, scored_method = best_box, method
     selected_panel = _connected_panel(pixels, catalog=catalog)
-    if selected_panel:
+    if selected_panel and (catalog or _usable_label_box(pixels, selected_panel[1])):
         panel_mask, best_box = selected_panel
         method = "connected_paper"
     else:
         panel_mask = None
+        best_box = scored_box
+        method = scored_method
+        if method == "paper_band":
+            best_box = _cover_and_trim(closed, best_box, extra=0.12)
+        wide_band = method == "paper_band" and (best_box[2] - best_box[0]) > width * 0.82
+        if not catalog and (not _usable_label_box(pixels, best_box) or wide_band):
+            amber = None if wide_band else _amber_panel(pixels)
+            if amber is not None:
+                best_box = amber
+                method = "amber_panel"
+            else:
+                alt = detect_label(image, catalog=True)
+                alt_box = (
+                    round(alt.bbox[0] * width),
+                    round(alt.bbox[1] * height),
+                    round(alt.bbox[2] * width),
+                    round(alt.bbox[3] * height),
+                )
+                alt_area = (alt.bbox[2] - alt.bbox[0]) * (alt.bbox[3] - alt.bbox[1])
+                if _usable_label_box(pixels, alt_box) and alt_area < 0.72:
+                    if not (wide_band and alt.bbox[0] >= 0.22):
+                        return alt
+                    return alt
+                if float(pixels[max(0, best_box[1]):best_box[3], max(0, best_box[0]):best_box[2]].mean()) < 0.42:
+                    return LabelDetection((0.0, 0.0, 1.0, 1.0), 0.12, "full_frame", None, None)
     left, top, right, bottom = best_box
     pad_x = max(0.01, (right - left) / width * 0.03)
     pad_y = max(0.01, (bottom - top) / height * 0.03)
@@ -891,6 +1047,9 @@ def crop_label(image: Image.Image, detection: LabelDetection) -> Image.Image:
     """Crop a detected label, unwarping a paper quad when corners are reliable."""
 
     image = label_rgb(image)
+    if detection.method == "full_frame":
+        width, height = image.size
+        return image.crop((round(width * 0.12), round(height * 0.32), round(width * 0.88), round(height * 0.98)))
     if detection.contour:
         mask = Image.new("L", image.size)
         ImageDraw.Draw(mask).polygon([(x * image.width, y * image.height) for x, y in detection.contour], fill=255)
