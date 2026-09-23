@@ -976,6 +976,110 @@ class LabelDetectionTests(unittest.TestCase):
                 self.assertGreater(crop.height, image.height * 0.20)
                 self.assertLess(crop.height, image.height * 0.38)
 
+    def test_vaynkraft_illustrated_wraps_keep_the_photo_and_footer(self):
+        uploads = (
+            Path(__file__).parents[2]
+            / "Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads"
+        )
+        filenames = (
+            "vaynkraft_kaberne_sovinon_krasnoe_suhoe_14_ae9402b920.webp",
+            "vaynkraft_rkatsiteli_oranzh_oranzhevoe_suhoe_12_65fe9c2119.webp",
+            "vaynkraft_traminer_oranzh_2_traminer_rozovyy_oranzhevoe_suhoe_125_3c507d40ce.webp",
+        )
+        for filename in filenames:
+            with self.subTest(filename=filename):
+                image = Image.open(uploads / filename)
+                detection = detect_label(image, catalog=True)
+                left, top, right, bottom = detection.bbox
+                self.assertEqual(detection.method, "printed_band")
+                self.assertLess(left, 0.02)
+                self.assertGreater(right, 0.98)
+                self.assertGreater(top, 0.58)
+                self.assertLess(top, 0.66)
+                self.assertGreater(bottom, 0.92)
+                self.assertLess(bottom, 0.99)
+                crop = crop_label(image, detection)
+                self.assertGreater(crop.height, image.height * 0.32)
+
+    def test_vaynkraft_risling_uses_the_full_illustrated_label(self):
+        image = Image.open(
+            Path(__file__).parents[2]
+            / "Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads/"
+            / "vaynkraft_risling_beloe_suhoe_123_a80dc48cd5.webp"
+        )
+        detection = detect_label(image, catalog=True)
+        left, top, right, bottom = detection.bbox
+        self.assertLess(left, 0.02)
+        self.assertGreater(right, 0.98)
+        self.assertGreater(top, 0.56)
+        self.assertLess(top, 0.64)
+        self.assertGreater(bottom, 0.90)
+        self.assertLess(bottom, 0.95)
+
+    def test_square_transparent_packshot_uses_the_warm_front_wrap(self):
+        image = Image.open(
+            Path(__file__).parents[2]
+            / "Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads/"
+            / "villa_di_alma_ekstra_bryut_kokur_igristoe_ekstra_bryut_beloe_125_531725a54a.webp"
+        )
+        detection = detect_label(image, catalog=True)
+        left, top, right, bottom = detection.bbox
+        self.assertEqual(detection.method, "warm_panel")
+        self.assertGreater(left, 0.32)
+        self.assertLess(left, 0.40)
+        self.assertGreater(right, 0.60)
+        self.assertLess(right, 0.68)
+        self.assertGreater(top, 0.66)
+        self.assertLess(top, 0.73)
+        self.assertGreater(bottom, 0.87)
+        self.assertLess(bottom, 0.93)
+        crop = crop_label(image, detection)
+        self.assertLess(crop.width, image.width * 0.32)
+        self.assertLess(crop.height, image.height * 0.28)
+
+    def test_vinodelnya_dark_wraps_keep_brand_emblem_and_variety(self):
+        uploads = (
+            Path(__file__).parents[2]
+            / "Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads"
+        )
+        cases = (
+            (
+                "vinodelnya_batrak_kaberne_sovinon_krasnoe_suhoe_14_50425a88e9.webp",
+                "crest_band",
+                (0.60, 0.66, 0.93, 0.98),
+            ),
+            (
+                "vinodelnya_78_saperavi_krasnoe_suhoe_135_1ea4d62431.webp",
+                "printed_band",
+                (0.60, 0.66, 0.88, 0.94),
+            ),
+            (
+                "vinodelnya_batrak_perfekt_klassik_merlo_krasnoe_suhoe_135_1949b2cb69.webp",
+                "printed_band",
+                (0.46, 0.53, 0.90, 0.97),
+            ),
+            (
+                "vinodelnya_batrak_perfekt_klassik_saperavi_krasnoe_suhoe_135_b23c1c2ed9.webp",
+                "printed_band",
+                (0.44, 0.52, 0.89, 0.96),
+            ),
+        )
+        for filename, method, (min_top, max_top, min_bottom, max_bottom) in cases:
+            with self.subTest(filename=filename):
+                image = Image.open(uploads / filename)
+                detection = detect_label(image, catalog=True)
+                left, top, right, bottom = detection.bbox
+                self.assertEqual(detection.method, method)
+                self.assertLess(left, 0.02)
+                self.assertGreater(right, 0.98)
+                self.assertGreater(top, min_top)
+                self.assertLess(top, max_top)
+                self.assertGreater(bottom, min_bottom)
+                self.assertLess(bottom, max_bottom)
+                crop = crop_label(image, detection)
+                self.assertGreater(crop.width, image.width * 0.95)
+                self.assertGreater(crop.height, image.height * 0.25)
+
     def test_zolotoe_pole_white_labels_are_not_confused_with_the_studio_backdrop(self):
         uploads = (
             Path(__file__).parents[2]
@@ -1051,6 +1155,143 @@ class LabelDetectionTests(unittest.TestCase):
                 actual_area = (actual[2] - actual[0]) * (actual[3] - actual[1])
                 iou = intersection / max(1, expected_area + actual_area - intersection)
                 self.assertGreaterEqual(iou, 0.60, f"{filename}: {actual=} {expected=}, {iou=:.3f}")
+
+
+    def test_catalog_printed_band_replaces_bottle_body_or_detached_fragment(self):
+        uploads = (
+            Path(__file__).parents[2]
+            / "Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads"
+        )
+        cases = (
+            ("Czimlyanskoe_Bianka_beloe_04a59b0f1e.webp", 0.405, 0.693),
+            ("Czimlyanskoe_Risling_cea1a80937.webp", 0.400, 0.695),
+            ("PETNAT_Rubin_prozrachnaya_3964ed9fec.webp", 0.685, 0.915),
+            ("denisov_winery_petnat_rkatsiteli_petnat_ekstra_bryut_belyy_107_5da935c18a.webp", 0.638, 0.915),
+            ("denisov_winery_petnat_tsitron_risling_tsitronnyy_magaracha_petnat_ekstra_bryut_belyy_102_8f425093ef.webp", 0.638, 0.915),
+            ("denisov_winery_rkatsiteli_beloe_suhoe_112_ed8e9acfcd.webp", 0.546, 0.875),
+        )
+        for filename, expected_top, expected_bottom in cases:
+            with self.subTest(filename=filename):
+                image = Image.open(uploads / filename)
+                detection = detect_label(image, catalog=True)
+                self.assertEqual(detection.method, "printed_band")
+                self.assertAlmostEqual(detection.bbox[1], expected_top, delta=0.025)
+                self.assertAlmostEqual(detection.bbox[3], expected_bottom, delta=0.025)
+                self.assertGreater(detection.bbox[2] - detection.bbox[0], 0.34)
+
+    def test_catalog_printed_band_replaces_a_side_edge_fragment(self):
+        image = Image.open(
+            Path(__file__).parents[2]
+            / "Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads/"
+            / "vinodelnya_raevskoe_genezis_beloe_risling_beloe_suhoe_123_e1e994dbf3.webp"
+        )
+        detection = detect_label(image, catalog=True)
+        left, top, right, bottom = detection.bbox
+        self.assertEqual(detection.method, "printed_band")
+        self.assertLess(left, 0.02)
+        self.assertGreater(right, 0.98)
+        self.assertGreater(top, 0.43)
+        self.assertLess(top, 0.48)
+        self.assertGreater(bottom, 0.73)
+        self.assertLess(bottom, 0.80)
+
+    def test_catalog_recovers_red_dark_and_wrapped_front_panels(self):
+        uploads = (
+            Path(__file__).parents[2]
+            / "Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads"
+        )
+        cases = (
+            (
+                "aya_organic_wine_vineyards_purity_in_syrah_sira_rozovoe_suhoe_132_56159ed421.webp",
+                "red_panel", 0.58, 0.66, 0.92, 0.99,
+            ),
+            (
+                "belmas_winery_pinot_gris_belmas_pino_gri_beloe_suhoe_122_1fe1641b7c.webp",
+                "dark_text_panel", 0.65, 0.75, 0.92, 0.99,
+            ),
+            (
+                "derbent_vino_kavkazian_merlo_krasnoe_polusladkoe_105_125_d2973b5f66.webp",
+                "red_panel", 0.70, 0.80, 0.87, 0.95,
+            ),
+            (
+                "nesterov_winery_krasnostop_zolotovskiy_krasnoe_suhoe_12_6036ce85a5.webp",
+                "printed_band", 0.44, 0.48, 0.84, 0.91,
+            ),
+        )
+        for filename, method, min_top, max_top, min_bottom, max_bottom in cases:
+            with self.subTest(filename=filename):
+                image = Image.open(uploads / filename)
+                detection = detect_label(image, catalog=True)
+                left, top, right, bottom = detection.bbox
+                self.assertEqual(detection.method, method)
+                self.assertLess(left, 0.03)
+                self.assertGreater(right, 0.95)
+                self.assertGreater(top, min_top)
+                self.assertLess(top, max_top)
+                self.assertGreater(bottom, min_bottom)
+                self.assertLess(bottom, max_bottom)
+                crop = crop_label(image, detection)
+                self.assertGreater(crop.width, image.width * 0.90)
+                self.assertGreater(crop.height, image.height * 0.14)
+
+    def test_catalog_prefers_full_desono_front_panel_over_side_glass(self):
+        uploads = (
+            Path(__file__).parents[2]
+            / "Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads"
+        )
+        filenames = (
+            "Desono_Kaberne_Fran_d35065b98b.webp",
+            "Desono_Kaberne_Sovinon_92912df82f.webp",
+            "Desono_Merlo_8f58649b26.webp",
+            "Desono_Risling_b70f2d30ac.webp",
+            "Desono_Saperavi_606c582da8.webp",
+            "Desono_Saperavi_roze_a6f976b72e.webp",
+            "Desono_Shardone_46ac5a58e0.webp",
+        )
+        for filename in filenames:
+            with self.subTest(filename=filename):
+                image = Image.open(uploads / filename)
+                detection = detect_label(image, catalog=True)
+                left, top, right, bottom = detection.bbox
+                self.assertEqual(detection.method, "printed_band")
+                self.assertAlmostEqual(left, 0.124, delta=0.025)
+                self.assertAlmostEqual(right, 0.873, delta=0.025)
+                self.assertAlmostEqual(top, 0.47, delta=0.04)
+                self.assertAlmostEqual(bottom, 0.85, delta=0.04)
+
+    def test_catalog_recovers_name_panels_from_neck_and_bottom_fragments(self):
+        uploads = (
+            Path(__file__).parents[2]
+            / "Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads"
+        )
+        cases = (
+            ("product_3_5598a285a2.webp", "printed_band", 0.32, 0.76, 0.80),
+            ("product_2_03f0763593.webp", "printed_band", 0.32, 0.76, 0.80),
+            ("sober_bash_rkatsiteli_beloe_suhoe_14_5c76e13a55.webp", "dark_print", 0.48, 0.82, 0.65),
+            ("soyuz_vino_mosavali_saperavi_suhoe_krasnoe_11_4664250a21.webp", "saturated_panel", 0.43, 0.96, 0.80),
+        )
+        for filename, method, min_top, max_bottom, min_width in cases:
+            with self.subTest(filename=filename):
+                image = Image.open(uploads / filename)
+                detection = detect_label(image, catalog=True)
+                left, top, right, bottom = detection.bbox
+                self.assertEqual(detection.method, method)
+                self.assertGreaterEqual(top, min_top)
+                self.assertLessEqual(bottom, max_bottom)
+                self.assertGreater(right - left, min_width)
+
+        # These WebP packshots have transparent backgrounds. Keeping their
+        # alpha channel lets the detector isolate the paper panel from the
+        # white studio composite instead of seeing black-filled transparency.
+        for filename, min_width in (
+            ("stn_winery_trio_aligote_beloe_suhoe_13_6adf0dafd2.webp", 0.70),
+            ("skalistyy_bereg_skb_blan_de_nuar_pino_nuar_beloe_ekstra_bryut_118_7f63c74351.webp", 0.55),
+        ):
+            with self.subTest(filename=filename):
+                image = Image.open(uploads / filename)
+                self.assertIn("A", image.getbands())
+                detection = detect_label(image, catalog=True)
+                self.assertGreater(detection.bbox[2] - detection.bbox[0], min_width)
 
 
 if __name__ == "__main__":

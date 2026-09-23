@@ -225,6 +225,44 @@ def _saturated_label_box(pixels: np.ndarray):
     )
 
 
+def _red_catalog_panel_band(pixels: np.ndarray):
+    """Find a broad red/magenta front panel against similarly bright glass."""
+
+    height, width = pixels.shape[:2]
+    if height < width * 1.4:
+        return None
+    span = _bottle_span(pixels, 0.16)
+    if span is None or span[1] - span[0] < width * 0.45:
+        return None
+
+    red, green, blue = pixels[:, :, 0], pixels[:, :, 1], pixels[:, :, 2]
+    value = np.maximum(np.maximum(red, green), blue)
+    magenta = (
+        (red > green + 0.12)
+        & (red > blue + 0.08)
+        & (green < blue + 0.14)
+        & (value > 0.17)
+    )
+    magenta[:round(height * 0.42)] = False
+    row = _smooth(magenta.mean(axis=1), max(5, round(height * 0.008)))
+    flags = row > 0.55
+    flags[:round(height * 0.42)] = False
+    flags[round(height * 0.97):] = False
+    flags = _fill_short_gaps(flags, max(4, round(height * 0.025)))
+    top, bottom = _longest_run(flags)
+    if not height * 0.08 <= bottom - top <= height * 0.48:
+        return None
+
+    columns = np.flatnonzero(magenta[top:bottom].mean(axis=0) > 0.30)
+    if columns.size < width * 0.30:
+        return None
+    left, right = int(columns[0]), int(columns[-1]) + 1
+    if right - left < width * 0.60:
+        return None
+    pad = max(2, round(height * 0.008))
+    return max(0, left - 1), max(0, top - pad), min(width, right + 1), min(height, bottom + pad)
+
+
 def _extend_faded_edge(pixels: np.ndarray, box: Tuple[int, int, int, int]):
     """Keep the curved side of a pale label after the paper mask stops.
 
@@ -577,6 +615,195 @@ def _printed_catalog_band(pixels: np.ndarray):
     )
 
 
+def _printed_catalog_wrap_envelope(pixels: np.ndarray, anchor: Tuple[int, int, int, int]):
+    """Join an emblem and the separated wine-name lines on a dark wrap."""
+
+    height, width = pixels.shape[:2]
+    if height < width * 1.4 or (anchor[2] - anchor[0]) < width * 0.82:
+        return None
+    span = _bottle_span(pixels, 0.16)
+    if span is None:
+        return None
+    bottle_left, bottle_right = span
+    inset = max(1, round((bottle_right - bottle_left) * 0.12))
+    left, right = bottle_left + inset, bottle_right - inset
+    if right - left < width * 0.12:
+        return None
+
+    gray = pixels.mean(axis=2)
+    edge = np.zeros_like(gray)
+    edge[:, 1:] += np.abs(gray[:, 1:] - gray[:, :-1])
+    edge[1:, :] += np.abs(gray[1:, :] - gray[:-1, :])
+    profile = _smooth(edge[:, left:right].mean(axis=1), max(3, round(height * 0.006)))
+    start, stop = round(height * 0.44), round(height * 0.92)
+    baseline = float(np.median(profile[round(height * 0.30):round(height * 0.94)]))
+    active = profile > max(0.012, baseline * 1.8)
+    active[:start] = False
+    active[stop:] = False
+
+    runs = []
+    index = start
+    min_run = max(5, round(height * 0.02))
+    while index < stop:
+        if not active[index]:
+            index += 1
+            continue
+        end = index + 1
+        while end < stop and active[end]:
+            end += 1
+        if end - index >= min_run:
+            runs.append((index, end))
+        index = end
+    if len(runs) < 2:
+        return None
+
+    anchor_top, anchor_bottom = anchor[1], anchor[3]
+    match = max(
+        range(len(runs)),
+        key=lambda i: max(0, min(runs[i][1], anchor_bottom) - max(runs[i][0], anchor_top)),
+    )
+    overlap = max(0, min(runs[match][1], anchor_bottom) - max(runs[match][0], anchor_top))
+    if overlap / max(1, min(runs[match][1] - runs[match][0], anchor_bottom - anchor_top)) < 0.55:
+        return None
+
+    top, bottom = anchor_top, anchor_bottom
+    max_gap = round(height * 0.12)
+    lower = next(
+        (
+            i for i, run in enumerate(runs)
+            if run[0] >= anchor_bottom and run[0] - anchor_bottom <= max_gap
+        ),
+        None,
+    )
+    if lower is None:
+        return None
+    last = lower
+    while last + 1 < len(runs) and runs[last + 1][0] - runs[last][1] <= max_gap:
+        last += 1
+    bottom = runs[last][1]
+    first = next(
+        (
+            i for i in range(match - 1, -1, -1)
+            if runs[i][1] <= anchor_top and anchor_top - runs[i][1] <= max_gap
+        ),
+        None,
+    )
+    if first is not None:
+        while first > 0 and runs[first][0] - runs[first - 1][1] <= max_gap:
+            first -= 1
+        top = runs[first][0]
+    if not height * 0.46 <= top <= height * 0.72:
+        return None
+    if not height * 0.70 <= bottom <= height * 0.88:
+        return None
+    if not height * 0.22 <= bottom - top <= height * 0.48:
+        return None
+
+    return (
+        anchor[0],
+        max(0, top - round(height * 0.025)),
+        anchor[2],
+        min(height, bottom + round(height * 0.105)),
+    )
+
+
+def _centered_printed_text_band(pixels: np.ndarray):
+    """Find the main name panel when lower bottle artwork wins the edge score."""
+
+    height, width = pixels.shape[:2]
+    if height < width * 1.6 or float(_studio_background(pixels).mean()) < 0.12:
+        return None
+    span = _bottle_span(pixels, 0.15)
+    if span is None:
+        return None
+    bottle_left, bottle_right = span
+    inset = round((bottle_right - bottle_left) * 0.28)
+    left = max(round(width * 0.30), bottle_left + inset)
+    right = min(round(width * 0.70), bottle_right - inset)
+    if right - left < width * 0.24:
+        return None
+
+    gray = pixels.mean(axis=2)
+    edge = np.zeros_like(gray)
+    edge[:, 1:] += np.abs(gray[:, 1:] - gray[:, :-1])
+    edge[1:, :] += np.abs(gray[1:, :] - gray[:-1, :])
+    profile = _smooth(edge[:, left:right].mean(axis=1), max(3, round(height * 0.006)))
+    start, stop = round(height * 0.32), round(height * 0.74)
+    baseline = float(np.median(profile[start:stop]))
+    active = profile > max(0.008, baseline * 1.8)
+    active[:start] = False
+    active[stop:] = False
+    active = _fill_short_gaps(active, max(3, round(height * 0.04)))
+
+    runs = []
+    index = start
+    while index < stop:
+        if not active[index]:
+            index += 1
+            continue
+        end = index + 1
+        while end < stop and active[end]:
+            end += 1
+        top_fraction = index / height
+        run_height = end - index
+        if (
+            height * 0.06 <= run_height <= height * 0.30
+            and 0.34 <= top_fraction <= 0.58
+            and end <= height * 0.66
+        ):
+            strength = float(profile[index:end].mean()) - baseline
+            runs.append((strength * run_height, index, end))
+        index = end
+    if not runs:
+        return None
+
+    _, top, bottom = max(runs)
+    run_height = bottom - top
+    top_pad = round(height * (0.05 if run_height >= height * 0.15 else 0.08))
+    bottom_pad = round(height * (0.055 if run_height >= height * 0.15 else 0.18))
+    return (
+        max(0, bottle_left - round(width * 0.01)),
+        max(round(height * 0.30), top - top_pad),
+        min(width, bottle_right + round(width * 0.01)),
+        min(round(height * 0.76), bottom + bottom_pad),
+    )
+
+
+def _extend_dark_printed_panel(pixels: np.ndarray, box: Tuple[int, int, int, int]):
+    """Extend a short top-ornament hit through its continuous dark label panel."""
+
+    height, width = pixels.shape[:2]
+    left, top, right, bottom = box
+    span_width = right - left
+    span_height = bottom - top
+    if (
+        span_width < width * 0.60
+        or not height * 0.10 <= span_height < height * 0.22
+        or top < height * 0.35
+    ):
+        return box
+
+    inset = max(2, round(span_width * 0.06))
+    value = pixels[:, left + inset:right - inset].max(axis=2)
+    dark_rows = _smooth((value < 0.30).mean(axis=1), max(3, round(height * 0.006)))
+    flags = dark_rows > 0.58
+    flags[:bottom] = False
+    flags[int(height * 0.93):] = False
+    flags = _fill_short_gaps(flags, max(2, round(height * 0.015)))
+    end = bottom
+    while end < len(flags) and flags[end]:
+        end += 1
+    extension = end - bottom
+    total_height = end - top
+    if (
+        extension < height * 0.10
+        or not height * 0.24 <= total_height <= height * 0.48
+        or end >= height * 0.93
+    ):
+        return box
+    return left, top, right, end
+
+
 def _band_below_colour(pixels: np.ndarray, box: Tuple[int, int, int, int]):
     """Cream or white label under a band of coloured glass.
 
@@ -765,6 +992,35 @@ def _shield_label_box(pixels: np.ndarray):
     if not height * 0.14 <= bottom - top <= height * 0.36:
         return None
     return left, top, right, bottom
+
+
+def _shield_label_outline(pixels: np.ndarray, box: Tuple[int, int, int, int]):
+    """Grow a text hit to the decorated plaque that carries the name."""
+
+    height, width = pixels.shape[:2]
+    left = max(0, box[0] - round(width * 0.06))
+    right = min(width, box[2] + round(width * 0.06))
+    gray = pixels.mean(axis=2)
+    edge = np.zeros_like(gray)
+    edge[:, 1:] += np.abs(gray[:, 1:] - gray[:, :-1])
+    edge[1:, :] += np.abs(gray[1:, :] - gray[:-1, :])
+    profile = _smooth(edge[:, left:right].mean(axis=1), max(3, round(height * 0.008)))
+    baseline = float(np.median(profile[int(height * 0.44):int(height * 0.60)]))
+    flags = profile > max(0.025, baseline * 1.4)
+    flags[:int(height * 0.48)] = False
+    flags[int(height * 0.96):] = False
+    flags = _fill_short_gaps(flags, max(3, round(height * 0.02)))
+    top, bottom = _run_containing(flags, (box[1] + box[3]) // 2)
+    if not height * 0.12 <= bottom - top <= height * 0.36:
+        return None
+    if top < height * 0.52 or float(profile[top:bottom].mean()) < baseline * 1.35:
+        return None
+    return (
+        left,
+        max(0, top - round(height * 0.012)),
+        right,
+        min(height, bottom + round(height * 0.015)),
+    )
 
 
 def _pale_diamond_box(pixels: np.ndarray):
@@ -1192,6 +1448,66 @@ def _dark_label_band(pixels: np.ndarray):
     if right - left < width * 0.50:
         return None
     return left, top, right, bottom
+
+
+def _dark_text_catalog_panel(pixels: np.ndarray):
+    """Find a dark lower label with pale type beneath bright colored glass."""
+
+    height, width = pixels.shape[:2]
+    if height < width * 1.7:
+        return None
+    span = _bottle_span(pixels, 0.16)
+    if span is None:
+        return None
+    left, right = span
+    if right - left < width * 0.50:
+        return None
+
+    value = pixels.max(axis=2)
+    saturation = 1.0 - pixels.min(axis=2) / np.maximum(value, 1e-4)
+    studio = _studio_background(pixels)
+    dark = (value < 0.34) & (saturation < 0.35) & np.logical_not(studio)
+    row = _smooth(dark[:, left:right].mean(axis=1), max(5, round(height * 0.01)))
+    flags = row > 0.55
+    flags[:round(height * 0.58)] = False
+    flags[round(height * 0.97):] = False
+    flags = _fill_short_gaps(flags, max(4, round(height * 0.025)))
+
+    runs = []
+    index = 0
+    while index < height:
+        if not flags[index]:
+            index += 1
+            continue
+        end = index + 1
+        while end < height and flags[end]:
+            end += 1
+        if (
+            height * 0.14 <= end - index <= height * 0.40
+            and height * 0.58 <= index <= height * 0.78
+            and end > height * 0.88
+        ):
+            runs.append((index, end))
+        index = end
+    if not runs:
+        return None
+
+    pale_type = (value > 0.68) & (saturation < 0.30) & np.logical_not(studio)
+    for top, bottom in runs:
+        above_top = max(0, top - round(height * 0.05))
+        above = pixels[above_top:top, left:right]
+        printed = pale_type[top:bottom, left:right]
+        if above.shape[0] < 4 or float(above.mean()) < 0.28:
+            continue
+        if float(saturation[above_top:top, left:right].mean()) < 0.35:
+            continue
+        if float(printed.mean()) < 0.006:
+            continue
+        text_columns = np.flatnonzero(printed.mean(axis=0) > 0.02)
+        if text_columns.size < (right - left) * 0.16:
+            continue
+        return left, top, right, bottom
+    return None
 
 
 def _achromatic_catalog_label_band(pixels: np.ndarray):
@@ -2702,10 +3018,20 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
                 and 0.56 < printed_top < 0.73
                 and current_width > width * 0.80
                 and printed_width > width * 0.88
-                and height * 0.13 < current_height_px < height * 0.35
-                and height * 0.14 < printed_height_px < height * 0.32
+                and height * 0.10 < current_height_px < height * 0.38
+                and height * 0.14 < printed_height_px < height * 0.38
                 and overlap_w / max(1, min(current_width, printed_width)) > 0.85
-                and overlap_h / max(1, min(current_height_px, printed_height_px)) > 0.78
+                and overlap_h / max(1, min(current_height_px, printed_height_px)) > 0.65
+            )
+            separated_footer_wrap = (
+                method in {"connected_paper", "crest_band", "paper_band", "paper_panel"}
+                and best_box[3] > height * 0.90
+                and printed_width > width * 0.82
+                and height * 0.12 < printed_height_px < height * 0.34
+                and height * 0.54 < printed[1] < height * 0.73
+                and height * 0.69 < printed[3] < height * 0.84
+                and height * 0.015 < best_box[1] - printed[3] < height * 0.14
+                and abs((best_box[0] + best_box[2] - printed[0] - printed[2]) / 2) < width * 0.08
             )
             lower_print_panel = (
                 method in {"dark_print", "paper_band"}
@@ -2738,20 +3064,27 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
                 and height * 0.68 < printed[3] < height * 0.82
                 and print_covers_fragment
             )
+            cropped_side_of_wrap = (
+                method == "connected_paper"
+                and current_width < printed_width * 0.78
+                and print_covers_fragment
+            )
             nested_print_panel = (
                 lower_print_panel
                 and (current_covers_print or print_covers_fragment or partial_print_overlap)
-            ) or mid_print_fragment
+            ) or mid_print_fragment or cropped_side_of_wrap
             bottom_clipped_panel = (
                 method == "crest_band"
                 and best_box[3] > height * 0.97
                 and printed_top > 0.58
             )
-            if whole_packshot or neck_fragment or lower_ornament_fragment or bottom_clipped_panel or matching_wrap_band or nested_print_panel:
-                front_wrap_match = matching_wrap_band or nested_print_panel
+            if whole_packshot or neck_fragment or lower_ornament_fragment or bottom_clipped_panel or matching_wrap_band or separated_footer_wrap or nested_print_panel:
+                front_wrap_match = matching_wrap_band or separated_footer_wrap or nested_print_panel
                 if nested_print_panel:
                     pad_top, pad_bottom = 0.015, 0.015
                 elif matching_wrap_band:
+                    pad_top, pad_bottom = 0.012, 0.012
+                elif separated_footer_wrap:
                     pad_top, pad_bottom = 0.012, 0.012
                 elif method == "paper_panel":
                     pad_top, pad_bottom = 0.015, 0.09
@@ -2771,7 +3104,11 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
                     printed[0],
                     max(0, printed[1] - round(height * pad_top)),
                     printed[2],
-                    min(height, printed[3] + round(height * pad_bottom)),
+                    min(
+                        height,
+                        (best_box[3] if separated_footer_wrap else printed[3])
+                        + round(height * pad_bottom),
+                    ),
                 )
                 method = "printed_band"
                 panel_mask = None
@@ -2849,6 +3186,58 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
             best_score = max(best_score, 0.7)
 
         alpha_span = _alpha_foreground_span(image)
+        if alpha_span is not None and alpha_span[2] > 0.18:
+            alpha_left, alpha_right, transparent = alpha_span
+            alpha_width = alpha_right - alpha_left
+            if method == "glass_band" and transparent > 0.18 and alpha_width > 0.85:
+                printed = _printed_catalog_band(pixels)
+                wrap = _printed_catalog_wrap_envelope(pixels, printed) if printed else None
+                if wrap is not None:
+                    best_box = wrap
+                    method = "printed_band"
+                    panel_mask = None
+                    front_wrap_match = True
+                    best_score = max(best_score, 0.7)
+
+            if (
+                method in {"connected_paper", "glass_band", "paper_band", "paper_panel"}
+                and transparent > 0.18
+                and alpha_width > 0.85
+                and crest is not None
+                and width * 0.35 <= crest[2] - crest[0] <= width * 0.82
+                and height * 0.50 < crest[1] < height * 0.74
+                and height * 0.90 < crest[3] < height * 0.99
+                and height * 0.28 < crest[3] - crest[1] < height * 0.52
+            ):
+                current_top, current_bottom = best_box[1], best_box[3]
+                current_height = current_bottom - current_top
+                misses_dark_wrap = (
+                    method == "connected_paper"
+                    and current_bottom < crest[1] - height * 0.02
+                )
+                emblem_only = (
+                    method == "glass_band"
+                    and current_top >= crest[1] - height * 0.035
+                    and current_bottom < crest[3] - height * 0.08
+                    and current_height < (crest[3] - crest[1]) * 0.80
+                )
+                if misses_dark_wrap or emblem_only:
+                    best_box = (
+                        max(0, round(alpha_left * width)),
+                        max(
+                            0,
+                            crest[1] + round(height * 0.04)
+                            if misses_dark_wrap
+                            else crest[1] - round(height * 0.01),
+                        ),
+                        min(width, round(alpha_right * width)),
+                        max(0, crest[3] - round(height * 0.03)),
+                    )
+                    method = "crest_band"
+                    panel_mask = None
+                    front_wrap_match = True
+                    best_score = max(best_score, 0.7)
+
         alpha_band_pixels = None
         if alpha_span is not None:
             alpha_band_image = ImageOps.exif_transpose(image).convert("RGB")
@@ -2881,6 +3270,45 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
                 method = "alpha_label_band"
                 panel_mask = None
                 best_score = max(best_score, 0.7)
+    if catalog:
+        # Square transparent product photos can contain a very tall bottle;
+        # the canvas ratio alone must not disable packshot label recovery.
+        alpha_span = _alpha_foreground_span(image)
+        if alpha_span is not None and alpha_span[2] > 0.20:
+            warm = _warm_catalog_label_band(pixels)
+            if warm is not None:
+                alpha_left, alpha_right, _transparent = alpha_span
+                warm_height = warm[3] - warm[1]
+                current_height = best_box[3] - best_box[1]
+                warm_area = (warm[2] - warm[0]) * warm_height
+                current_area = (best_box[2] - best_box[0]) * current_height
+                covers_band = (
+                    best_box[1] <= warm[1] + height * 0.03
+                    and best_box[3] >= warm[3] - height * 0.03
+                )
+                aligned_with_bottle = (
+                    abs((warm[0] + warm[2]) / (2 * width) - (alpha_left + alpha_right) / 2) < 0.08
+                )
+                bottle_body_over_crop = (
+                    covers_band
+                    and current_height > height * 0.55
+                    and current_area > warm_area * 1.8
+                    and width * 0.22 < warm[2] - warm[0] < width * 0.70
+                    and height * 0.08 < warm_height < height * 0.30
+                    and warm[1] > height * 0.56
+                    and warm[3] < height * 0.93
+                    and aligned_with_bottle
+                )
+                if bottle_body_over_crop:
+                    best_box = (
+                        warm[0],
+                        max(0, warm[1] - round(height * 0.015)),
+                        warm[2],
+                        min(height, warm[3] + round(height * 0.025)),
+                    )
+                    method = "warm_panel"
+                    panel_mask = None
+                    best_score = max(best_score, 0.7)
     if catalog and method == "saturated_panel" and tall_packshot:
         # A saturated colour detector can absorb a long stretch of tinted
         # glass above a compact, fully printed label. Prefer the horizontal
@@ -3046,6 +3474,27 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
                 method = "printed_band"
                 panel_mask = None
                 best_score = max(best_score, 0.7)
+            separated_footer = (
+                best_box[3] > height * 0.90
+                and best_box[2] - best_box[0] > width * 0.38
+                and printed[2] - printed[0] > width * 0.82
+                and height * 0.12 < printed_height < height * 0.34
+                and height * 0.54 < printed[1] < height * 0.73
+                and height * 0.69 < printed[3] < height * 0.84
+                and height * 0.015 < best_box[1] - printed[3] < height * 0.14
+                and abs((best_box[0] + best_box[2] - printed[0] - printed[2]) / 2) < width * 0.08
+            )
+            if separated_footer:
+                best_box = (
+                    printed[0],
+                    max(0, printed[1] - round(height * 0.012)),
+                    printed[2],
+                    min(height, best_box[3] + round(height * 0.012)),
+                )
+                method = "printed_band"
+                panel_mask = None
+                front_wrap_match = True
+                best_score = max(best_score, 0.7)
     if catalog and tall_packshot:
         # A compact saturated front label is more reliable than a broad glass
         # band that happens to touch it or a dark reflection just above it.
@@ -3190,13 +3639,281 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
         if extended_side != tuple(best_box):
             best_box = extended_side
             panel_mask = None
+    if catalog:
+        # Several clean studio packshots have a dark or glassy bottle body
+        # around a compact printed label. The generic dark/foreground-band
+        # detectors can either keep most of the bottle or lock onto a
+        # reflection above/below the label. Prefer the independent printed
+        # band when that disagreement is strong.
+        printed = _printed_catalog_band(pixels)
+        wrapped_printed = False
+        if printed is not None:
+            printed = _extend_dark_printed_panel(pixels, printed)
+            wrap = _printed_catalog_wrap_envelope(pixels, printed)
+            if wrap is not None:
+                printed = wrap
+                wrapped_printed = True
+            printed_height = printed[3] - printed[1]
+            printed_width = printed[2] - printed[0]
+            current_width = best_box[2] - best_box[0]
+            current_height = best_box[3] - best_box[1]
+            current_area = current_height * (best_box[2] - best_box[0])
+            overlap_width = max(
+                0, min(best_box[2], printed[2]) - max(best_box[0], printed[0])
+            )
+            horizontal_overlap_ratio = overlap_width / max(1, min(current_width, printed_width))
+            overlap_height = max(
+                0, min(best_box[3], printed[3]) - max(best_box[1], printed[1])
+            )
+            overlap_ratio = overlap_height / max(1, min(current_height, printed_height))
+            printed_top = printed[1] / height
+            printed_bottom = printed[3] / height
+            printed_pixels = pixels[printed[1]:printed[3], printed[0]:printed[2]]
+            printed_value = printed_pixels.max(axis=2)
+            printed_saturation = 1.0 - printed_pixels.min(axis=2) / np.maximum(printed_value, 1e-4)
+            dark_panel = (
+                float((printed_value < 0.34).mean()) > 0.65
+                and float(printed_pixels.mean()) < 0.36
+                and float(printed_saturation.mean()) < 0.22
+            )
+            plausible_band = (
+                printed_width / width >= 0.34
+                and 0.12 <= printed_height / height <= 0.50
+                and printed_top >= 0.30
+                and printed_bottom <= 0.95
+            )
+            current_is_bottle_sized = (
+                current_height / height >= 0.52
+                and current_area / (width * height) >= 0.32
+                and printed_height < current_height * 0.78
+            )
+            current_misses_panel = (
+                overlap_ratio < 0.14
+                and current_height / height < 0.50
+                and method in {
+                    "foreground_band", "dark_band", "glass_band", "label_footer",
+                    "dark_print", "dark_panel", "lower_print", "trimmed_panel",
+                    "connected_paper", "paper_band", "paper_quad", "label_panel",
+                    "paper_panel", "pale_diamond", "achromatic_band",
+                }
+            )
+            current_is_narrow_fragment = (
+                dark_panel
+                and horizontal_overlap_ratio > 0.80
+                and current_width < printed_width * 0.62
+                and overlap_ratio < 0.72
+            )
+            current_is_edge_fragment = (
+                horizontal_overlap_ratio > 0.85
+                and current_width < printed_width * 0.62
+                and (best_box[0] <= width * 0.03 or best_box[2] >= width * 0.97)
+                and best_box[1] <= printed[1] + height * 0.04
+                and best_box[3] >= printed[3] - height * 0.04
+                and printed_width / width > 0.70
+                and current_height / height > 0.40
+                and method in {
+                    "connected_paper", "paper_band", "paper_panel", "label_panel",
+                    "trimmed_panel", "glass_band", "foreground_band", "label_footer",
+                }
+            )
+            if plausible_band and (
+                current_is_bottle_sized
+                or current_misses_panel
+                or current_is_narrow_fragment
+                or current_is_edge_fragment
+            ):
+                vertical_pad = max(2, round(height * 0.012))
+                best_box = (
+                    printed[0],
+                    max(0, printed[1] - vertical_pad),
+                    printed[2],
+                    min(height, printed[3] + vertical_pad),
+                )
+                method = "printed_band"
+                panel_mask = None
+                best_score = max(best_score, 0.7)
+                front_wrap_match = wrapped_printed
+    if catalog and tall_packshot:
+        if method == "shield":
+            plaque = _shield_label_outline(pixels, best_box)
+            if plaque is not None:
+                best_box = plaque
+                panel_mask = None
+
+        # Reject tiny crops of a bottom seam or neck ornament when the full
+        # saturated front label is still visible elsewhere on the bottle.
+        colour = _saturated_label_box(pixels)
+        if colour is not None and method not in {
+            "printed_band", "dark_print", "dark_panel", "dark_band", "shield",
+            "paper_below", "saturated_panel", "alpha_label_band",
+        }:
+            colour_width = (colour[2] - colour[0]) / width
+            colour_height = (colour[3] - colour[1]) / height
+            colour_top = colour[1] / height
+            colour_bottom = colour[3] / height
+            current_width = best_box[2] - best_box[0]
+            current_height = best_box[3] - best_box[1]
+            current_area = current_width * current_height
+            colour_area = (colour[2] - colour[0]) * (colour[3] - colour[1])
+            overlap_w = max(0, min(best_box[2], colour[2]) - max(best_box[0], colour[0]))
+            overlap_h = max(0, min(best_box[3], colour[3]) - max(best_box[1], colour[1]))
+            colour_cover = overlap_w * overlap_h / max(1, colour_area)
+            missed_saturated_label = (
+                current_area < colour_area * 0.55
+                and colour_cover < 0.45
+                and current_width < width * 0.70
+                and colour_width > 0.68
+                and 0.20 <= colour_height <= 0.50
+                and 0.35 <= colour_top <= 0.72
+                and colour_bottom <= 0.96
+            )
+            if missed_saturated_label:
+                best_box = colour
+                method = "saturated_panel"
+                panel_mask = None
+                best_score = max(best_score, 0.7)
+
+        # A centered dark name panel may be missed when paper detection locks
+        # onto a small neck highlight above it.
+        dark = _dark_print_label_box(pixels)
+        if dark is not None and method not in {
+            "printed_band", "dark_print", "dark_panel", "dark_band", "shield",
+            "paper_below", "saturated_panel", "alpha_label_band",
+        }:
+            dark_width = dark[2] - dark[0]
+            dark_height = dark[3] - dark[1]
+            current_width = best_box[2] - best_box[0]
+            current_height = best_box[3] - best_box[1]
+            dark_area = dark_width * dark_height
+            current_area = current_width * current_height
+            overlap_w = max(0, min(best_box[2], dark[2]) - max(best_box[0], dark[0]))
+            overlap_h = max(0, min(best_box[3], dark[3]) - max(best_box[1], dark[1]))
+            dark_cover = overlap_w * overlap_h / max(1, dark_area)
+            detached_dark_label = (
+                current_area < dark_area * 0.55
+                and dark_cover < 0.45
+                and current_width < width * 0.55
+                and dark_width > width * 0.62
+                and 0.16 <= dark_height / height <= 0.40
+                and 0.44 <= dark[1] / height <= 0.72
+                and dark[3] / height <= 0.90
+            )
+            if detached_dark_label:
+                best_box = dark
+                method = "dark_print"
+                panel_mask = None
+                best_score = max(best_score, 0.7)
+
+        # In dark studio packshots, foreground edge energy from people or
+        # decorations below the name can outrank the actual centered title.
+        centered = _centered_printed_text_band(pixels)
+        if centered is not None and method not in {
+            "printed_band", "dark_print", "dark_panel", "dark_band", "shield",
+            "paper_below", "saturated_panel", "alpha_label_band",
+        }:
+            centered_width = centered[2] - centered[0]
+            centered_height = centered[3] - centered[1]
+            current_width = best_box[2] - best_box[0]
+            current_height = best_box[3] - best_box[1]
+            centered_area = centered_width * centered_height
+            overlap_w = max(0, min(best_box[2], centered[2]) - max(best_box[0], centered[0]))
+            overlap_h = max(0, min(best_box[3], centered[3]) - max(best_box[1], centered[1]))
+            centered_cover = overlap_w * overlap_h / max(1, centered_area)
+            current_centre_y = (best_box[1] + best_box[3]) / (2 * height)
+            centered_centre_y = (centered[1] + centered[3]) / (2 * height)
+            misses_centered_title = (
+                centered_cover < 0.40
+                and abs(current_centre_y - centered_centre_y) > 0.12
+                and centered_width > width * 0.65
+                and 0.18 <= centered_height / height <= 0.38
+                and 0.32 <= centered[1] / height <= 0.56
+                and centered[3] / height <= 0.76
+                and current_width > width * 0.20
+                and current_height / height >= 0.10
+            )
+            if misses_centered_title:
+                best_box = centered
+                method = "printed_band"
+                panel_mask = None
+                best_score = max(best_score, 0.7)
+    if catalog and tall_packshot:
+        strong_label_methods = {
+            "printed_band", "dark_print", "dark_panel", "dark_band", "shield",
+            "paper_below", "dark_text_panel", "alpha_label_band", "ink_shield",
+        }
+        if method not in strong_label_methods:
+            red_panel = _red_catalog_panel_band(pixels)
+            if red_panel is not None:
+                red_width = red_panel[2] - red_panel[0]
+                red_height = red_panel[3] - red_panel[1]
+                current_width = best_box[2] - best_box[0]
+                current_height = best_box[3] - best_box[1]
+                current_area = current_width * current_height
+                red_area = red_width * red_height
+                overlap_w = max(0, min(best_box[2], red_panel[2]) - max(best_box[0], red_panel[0]))
+                overlap_h = max(0, min(best_box[3], red_panel[3]) - max(best_box[1], red_panel[1]))
+                red_cover = overlap_w * overlap_h / max(1, red_area)
+                nested_red_component = (
+                    method == "saturated_panel"
+                    and red_cover >= 0.80
+                    and current_width >= red_width * 0.95
+                )
+                detached_red_panel = (
+                    current_area < red_area * 0.60
+                    and red_cover < 0.45
+                    and red_width > width * 0.75
+                    and red_height / height >= 0.08
+                )
+                trims_excess_glass = (
+                    method in {
+                        "saturated_panel", "connected_paper", "paper_band", "paper_panel",
+                        "label_panel", "trimmed_panel", "label_footer", "colour_panel",
+                    }
+                    and current_area > red_area * 1.75
+                    and best_box[1] < red_panel[1] - height * 0.12
+                    and current_width > red_width * 0.72
+                    and red_width > width * 0.75
+                    and red_panel[1] > height * 0.55
+                )
+                if (detached_red_panel or trims_excess_glass) and not nested_red_component:
+                    best_box = red_panel
+                    method = "red_panel"
+                    panel_mask = None
+                    best_score = max(best_score, 0.7)
+
+        if method not in strong_label_methods:
+            dark_text_panel = _dark_text_catalog_panel(pixels)
+            if dark_text_panel is not None:
+                panel_width = dark_text_panel[2] - dark_text_panel[0]
+                panel_height = dark_text_panel[3] - dark_text_panel[1]
+                panel_area = panel_width * panel_height
+                current_width = best_box[2] - best_box[0]
+                current_height = best_box[3] - best_box[1]
+                current_area = current_width * current_height
+                overlap_w = max(0, min(best_box[2], dark_text_panel[2]) - max(best_box[0], dark_text_panel[0]))
+                overlap_h = max(0, min(best_box[3], dark_text_panel[3]) - max(best_box[1], dark_text_panel[1]))
+                panel_cover = overlap_w * overlap_h / max(1, panel_area)
+                detached_dark_text = (
+                    panel_cover < 0.25
+                    and current_area < panel_area * 1.80
+                    and current_width > panel_width * 0.35
+                    and method in {
+                        "connected_paper", "paper_band", "paper_panel", "label_panel",
+                        "trimmed_panel", "label_footer", "saturated_panel", "colour_panel",
+                    }
+                )
+                if detached_dark_text:
+                    best_box = dark_text_panel
+                    method = "dark_text_panel"
+                    panel_mask = None
+                    best_score = max(best_score, 0.7)
     left, top, right, bottom = best_box
     pad_x = max(0.01, (right - left) / width * 0.03)
     pad_y = max(0.01, (bottom - top) / height * 0.03)
     if method == "paper_band":
         pad_x = max(0.07, (right - left) / width * 0.08)
         pad_y = max(0.012, (bottom - top) / height * 0.02)
-    elif method in {"trimmed_panel", "dark_band", "dark_print", "dark_panel", "lower_print", "white_gap", "emblem_panel", "crest_band", "paper_below", "shield", "pale_diamond", "label_footer", "matte_band", "glass_band", "colour_panel", "gold_label", "ink_shield", "achromatic_band", "bright_banner", "printed_band", "alpha_label_band", "foreground_band", "amber_panel"}:
+    elif method in {"trimmed_panel", "dark_band", "dark_print", "dark_panel", "dark_text_panel", "red_panel", "lower_print", "white_gap", "emblem_panel", "crest_band", "paper_below", "shield", "pale_diamond", "label_footer", "matte_band", "glass_band", "colour_panel", "gold_label", "ink_shield", "achromatic_band", "bright_banner", "printed_band", "alpha_label_band", "foreground_band", "amber_panel", "warm_panel"}:
         # Padding upward puts the bottle shoulder back into the crop.
         pad_x = 0.004
         pad_y = 0.0
@@ -3208,7 +3925,7 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
     )
     if (result[2] - result[0]) * (result[3] - result[1]) > 0.82:
         result = (left / width, top / height, right / width, bottom / height)
-    flat_methods = {"paper_band", "saturated_panel", "dark_band", "dark_print", "dark_panel", "lower_print", "white_gap", "emblem_panel", "crest_band", "paper_below", "shield", "pale_diamond", "label_footer", "matte_band", "glass_band", "colour_panel", "gold_label", "ink_shield", "achromatic_band", "bright_banner", "printed_band", "alpha_label_band", "foreground_band", "amber_panel"}
+    flat_methods = {"paper_band", "saturated_panel", "dark_band", "dark_print", "dark_panel", "dark_text_panel", "red_panel", "lower_print", "white_gap", "emblem_panel", "crest_band", "paper_below", "shield", "pale_diamond", "label_footer", "matte_band", "glass_band", "colour_panel", "gold_label", "ink_shield", "achromatic_band", "bright_banner", "printed_band", "alpha_label_band", "foreground_band", "amber_panel", "warm_panel"}
     pixel_quad = None if (tall_packshot or method in flat_methods) else _quad_from_mask(panel_mask if panel_mask is not None else closed, (left, top, right, bottom))
     pixel_contour = _panel_contour(panel_mask, (left, top, right, bottom)) if panel_mask is not None else None
     short_wide = (bottom - top) < height * 0.30 and (right - left) > width * 0.80
