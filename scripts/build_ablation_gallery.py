@@ -3,8 +3,9 @@ from pathlib import Path
 from urllib.parse import unquote,urlparse
 os.environ.update(HF_HOME=str(Path('backend/data/models').resolve()),HF_HUB_OFFLINE='1',TRANSFORMERS_OFFLINE='1',CV_DEVICE='cpu',CV_THREADS='4')
 import numpy as np
-from PIL import Image,ImageOps
+from PIL import Image
 from app.import_catalog import load_catalog,label_crop_if_useful
+from app.label_detection import label_rgb
 from app.settings import settings
 from app.vision import ImageEncoder,MODEL_ID,MODEL_REVISION
 out=Path('backend/data/ablation-2026-09-20');root=Path('Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads');catalog=load_catalog(settings.catalog_csv)
@@ -22,7 +23,8 @@ for w in catalog:
  path=root/(unquote(Path(urlparse(w.direct_image_url or '').path).name) or w.image_name)
  if not path.is_file():missing.append(w.slug);continue
  try:
-  rgb=ImageOps.exif_transpose(Image.open(path)).convert('RGB');digest=hashlib.sha256(path.read_bytes()).hexdigest()
+  with Image.open(path) as opened:rgb=label_rgb(opened)
+  digest=hashlib.sha256(path.read_bytes()).hexdigest()
   views=[('full',rgb)];crop=label_crop_if_useful(rgb)
   if crop is not None:views.append(('crop',crop))
   for kind,im in views:

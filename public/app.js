@@ -230,6 +230,7 @@ const example = {
   aromas: ['Белые цветы', 'Персик', 'Грейпфрут', 'Миндаль'], demo: true
 };
 let stream = null, cameraGeneration = 0, photo = null, photoUrl = null, controller = null, currentWine = null, toastTimer;
+let bottleChoices = [];
 let processingStartedAt = 0, processingTimer = null;
 let saved = [];
 try { const raw = JSON.parse(localStorage.getItem('svoe-wines') || '[]'); if (Array.isArray(raw)) saved = raw.filter(w => w && typeof w.slug === 'string' && typeof w.name === 'string').slice(0,100); } catch {}
@@ -266,6 +267,54 @@ const syncSavedCount = () => $('saved-count').textContent = saved.length;
 syncSavedCount();
 function notice(message) { $('notice').textContent = message; $('notice').hidden = !message; }
 function toast(message) { clearTimeout(toastTimer); $('toast').textContent = message; $('toast').hidden = false; toastTimer = setTimeout(() => $('toast').hidden = true, 3500); }
+function clearBottleChoices() {
+  bottleChoices = [];
+  $('bottle-choice-layer').hidden = true;
+  $('bottle-choice-buttons').replaceChildren();
+}
+function renderBottleChoices() {
+  const image = $('photo-preview');
+  const frame = $('dropzone').getBoundingClientRect();
+  if (!image.naturalWidth || !image.naturalHeight || !frame.width || !frame.height) return;
+  const scale = Math.min(frame.width / image.naturalWidth, frame.height / image.naturalHeight);
+  const drawnWidth = image.naturalWidth * scale;
+  const drawnHeight = image.naturalHeight * scale;
+  const offsetX = (frame.width - drawnWidth) / 2;
+  const offsetY = (frame.height - drawnHeight) / 2;
+  const buttons = $('bottle-choice-buttons');
+  buttons.replaceChildren();
+  bottleChoices.forEach((candidate, index) => {
+    const [left, top, right, bottom] = candidate.bbox;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'bottle-choice-box';
+    button.setAttribute('aria-label', `Выбрать бутылку ${index + 1}`);
+    const number = document.createElement('span');
+    number.textContent = String(index + 1);
+    button.append(number);
+    button.style.left = `${(offsetX + left * drawnWidth) / frame.width * 100}%`;
+    button.style.top = `${(offsetY + top * drawnHeight) / frame.height * 100}%`;
+    button.style.width = `${(right - left) * drawnWidth / frame.width * 100}%`;
+    button.style.height = `${(bottom - top) * drawnHeight / frame.height * 100}%`;
+    button.onclick = () => {
+      const selectedBox = candidate.bbox;
+      clearBottleChoices();
+      runRecognize(selectedBox);
+    };
+    buttons.append(button);
+  });
+}
+function showBottleChoices(candidates) {
+  if (!$('photo-preview').naturalWidth || !Array.isArray(candidates) || candidates.length < 2) return false;
+  bottleChoices = candidates.filter(item => Array.isArray(item?.bbox) && item.bbox.length === 4);
+  if (bottleChoices.length < 2) return false;
+  $('bottle-choice-layer').hidden = false;
+  renderBottleChoices();
+  return true;
+}
+window.addEventListener('resize', () => {
+  if (!$('bottle-choice-layer').hidden) renderBottleChoices();
+});
 function isSaved(wine) { return saved.some(item => item.slug === wine.slug); }
 function isCompared(wine) { return comparison.some(item => item.slug === wine.slug); }
 function persistComparison() { try { localStorage.setItem('svoe-comparison', JSON.stringify(comparison)); return true; } catch { toast('Сравнение показано только до закрытия страницы.'); return false; } }
@@ -356,6 +405,7 @@ function isHeifLike(file) {
 }
 async function selectPhoto(file) {
   if (!file || controller) return;
+  clearBottleChoices();
   notice('');
   if (!isAcceptedPhoto(file)) { notice('Выберите фото с телефона: JPEG, HEIC, PNG, WebP или AVIF.'); return; }
   if (file.size > 15 * 1024 * 1024) { notice('Фотография слишком большая. Выберите файл до 15 МБ.'); return; }
@@ -761,23 +811,44 @@ async function revealLabel(detection, signal) {
   });
 }
 
-async function runRecognize() {
+async function runRecognize(selectedBottleBox = null) {
   if (!photo || controller) return;
   const endpoint = window.SCANNER_CONFIG?.recognitionEndpoint;
   if (!endpoint) { notice('Фото готово. Распознавание ещё не подключено — снимок никуда не отправлен. Пока можно открыть пример карточки ниже.'); return; }
   notice(''); controller = new AbortController(); const active = controller;
-  const timer = setTimeout(() => active.abort('timeout'), 30000);
+  const timer = setTimeout(() => active.abort('timeout'), 90000);
   const started = performance.now();
   const cutout = $('scanning-label').parentElement;
   cutout.querySelector('canvas')?.remove(); cutout.classList.remove('revealing');
   $('scanning-label').src = photoUrl;
-  $('processing-status').textContent = 'Идёт поиск по каталогу…';
+  $('processing-status').textContent = 'Определяем бутылки на фото…';
   $('scanner-screen').hidden = false;
   $('result-screen').hidden = true;
   startProcessingLog();
   $('processing').hidden = false;
   try {
+    let targetBottleBox = selectedBottleBox;
+    const bottleEndpoint = window.SCANNER_CONFIG?.bottleDetectionEndpoint;
+    if (!targetBottleBox && window.SCANNER_CONFIG?.bottleDetectionEnabled && bottleEndpoint && $('photo-preview').naturalWidth) {
+      try {
+        const detectionBody = new FormData(); detectionBody.append('image', photo);
+        const detectionResponse = await fetch(bottleEndpoint, { method:'POST', body:detectionBody, signal:active.signal });
+        if (detectionResponse.ok) {
+          const bottleResult = await detectionResponse.json();
+          addProcessingLog(`Найдено бутылок: ${Number(bottleResult.count) || 0}`);
+          if (bottleResult.needs_selection && showBottleChoices(bottleResult.candidates)) return;
+          if (Array.isArray(bottleResult.primary_box)) targetBottleBox = bottleResult.primary_box;
+        } else {
+          addProcessingLog('Детектор бутылок недоступен; продолжим автоматический поиск');
+        }
+      } catch (error) {
+        if (active.signal.aborted) throw error;
+        addProcessingLog('Не удалось определить бутылки; продолжим автоматический поиск');
+      }
+    }
+    $('processing-status').textContent = 'Ищем этикетку и вино в каталоге…';
     const body = new FormData(); body.append('image', photo);
+    if (targetBottleBox) body.append('bottle_box', JSON.stringify(targetBottleBox));
     const ocrOn = debugOcrEnabled();
     const url = new URL(endpoint, location.origin);
     if (debugMode) url.searchParams.set('ocr', ocrOn ? '1' : '0');

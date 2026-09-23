@@ -1,6 +1,6 @@
 from typing import Any, Dict, Literal, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, Request, Response
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -137,7 +137,7 @@ def require_service() -> Recognizer:
 inference_slots = asyncio.Semaphore(2)
 
 
-async def recognize_upload(image: UploadFile, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None, compare_slug=None) -> Dict[str, Any]:
+async def recognize_upload(image: UploadFile, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None, compare_slug=None, bottle_box=None) -> Dict[str, Any]:
     declared = (image.content_type or "").split(";")[0].strip().lower()
     data = await image.read(settings.max_image_bytes + 1)
     if len(data) > settings.max_image_bytes:
@@ -155,7 +155,7 @@ async def recognize_upload(image: UploadFile, mode: str = "combined", include_ca
     except asyncio.TimeoutError:
         raise HTTPException(429, 'Recognition is busy; retry shortly')
     try:
-        return await run_in_threadpool(service.recognize, data, mode, include_candidates, ocr_enabled, compare_slug)
+        return await run_in_threadpool(service.recognize, data, mode, include_candidates, ocr_enabled, compare_slug, bottle_box)
     except Exception:
         import logging
         logging.exception('Recognition service failed')
@@ -165,7 +165,7 @@ async def recognize_upload(image: UploadFile, mode: str = "combined", include_ca
 
 
 @app.post("/v1/recognize", response_model=RecognizeResponse)
-async def recognize(request: Request, response: Response, image: UploadFile = File(...)) -> Dict[str, Any]:
+async def recognize(request: Request, response: Response, image: UploadFile = File(...), bottle_box: Optional[str] = Form(None)) -> Dict[str, Any]:
     """One best card; explicit debug requests may expose telemetry without a token."""
     token = request.headers.get('X-Scanner-Admin', '')
     expected = os.getenv('SCANNER_ADMIN_TOKEN', '')
@@ -194,7 +194,24 @@ async def recognize(request: Request, response: Response, image: UploadFile = Fi
             raw_compare = request.headers.get('X-Scanner-Compare-Slug')
         if raw_compare and raw_compare.strip():
             compare_slug = raw_compare.strip()[:200]
-    result = await recognize_upload(image, mode, include_candidates, ocr_enabled, compare_slug)
+    parsed_bottle_box = None
+    if bottle_box:
+        import json
+        import math
+
+        try:
+            parsed_bottle_box = json.loads(bottle_box)
+            if (
+                not isinstance(parsed_bottle_box, list)
+                or len(parsed_bottle_box) != 4
+                or any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in parsed_bottle_box)
+                or not (0 <= parsed_bottle_box[0] < parsed_bottle_box[2] <= 1)
+                or not (0 <= parsed_bottle_box[1] < parsed_bottle_box[3] <= 1)
+            ):
+                raise ValueError
+        except (TypeError, ValueError, json.JSONDecodeError):
+            raise HTTPException(422, 'Invalid bottle box')
+    result = await recognize_upload(image, mode, include_candidates, ocr_enabled, compare_slug, parsed_bottle_box)
     response.headers['Cache-Control'] = 'no-store'
     if not token and not debug_request:
         ranking = dict(result.get('ranking') or {})
@@ -213,6 +230,36 @@ async def recognize(request: Request, response: Response, image: UploadFile = Fi
             },
         }
     return result
+
+
+@app.post("/v1/bottles")
+async def detect_bottles(image: UploadFile = File(...)) -> Dict[str, Any]:
+    """Detect possible target bottles before the web client asks the user."""
+    declared = (image.content_type or "").split(";")[0].strip().lower()
+    data = await image.read(settings.max_image_bytes + 1)
+    if len(data) > settings.max_image_bytes:
+        raise HTTPException(status_code=413, detail="Image is larger than 15 MB.")
+    if not data:
+        raise HTTPException(status_code=400, detail="Image is empty.")
+    if not is_allowed_upload(declared, data):
+        raise HTTPException(
+            status_code=415,
+            detail="Supported image types: JPEG, PNG, WebP, HEIC/HEIF, AVIF.",
+        )
+    service = require_service()
+    try:
+        await asyncio.wait_for(inference_slots.acquire(), timeout=0.1)
+    except asyncio.TimeoutError:
+        raise HTTPException(429, 'Recognition is busy; retry shortly')
+    try:
+        result = await run_in_threadpool(service.detect_bottles, data)
+        return result
+    except Exception:
+        import logging
+        logging.exception('Bottle detection request failed')
+        raise HTTPException(503, 'Bottle detection temporarily unavailable')
+    finally:
+        inference_slots.release()
 
 
 @app.post("/v1/eval/predict")
@@ -319,7 +366,8 @@ PUBLIC = Path(os.getenv("STATIC_DIR", str(Path(__file__).resolve().parents[2] / 
 def config():
     import json
     return Response("window.SCANNER_CONFIG = " + json.dumps({
-        "recognitionEndpoint": "/v1/recognize", "profileEndpoint": "/v1/profile",
+        "recognitionEndpoint": "/v1/recognize", "bottleDetectionEndpoint": "/v1/bottles", "profileEndpoint": "/v1/profile",
+        "bottleDetectionEnabled": os.getenv('CV_ENABLED', 'false').lower() == 'true',
         "imageBaseUrl": settings.image_base_url,
     }) + ";", media_type="text/javascript")
 

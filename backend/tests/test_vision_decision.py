@@ -51,6 +51,33 @@ class VisualDecisionTests(unittest.TestCase):
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .95}, {'slug': 'b', 'score': .80}]
         self.assertEqual(self.recognizer.recognize(self.photo)['slug'], 'a')
 
+    def test_script_automatically_searches_inside_primary_bottle(self):
+        self.recognizer._bottle_detector = Mock()
+        self.recognizer._bottle_detector.detect.return_value = {
+            'available': True,
+            'count': 2,
+            'primary_box': [.2, .1, .8, .9],
+            'candidates': [],
+            'needs_selection': True,
+        }
+        self.recognizer.visual.search.return_value = []
+        with patch.dict(os.environ, {'CV_ENABLED': 'true'}):
+            result = self.recognizer.recognize(self.photo, mode='image_full')
+        self.assertEqual(self.recognizer.visual.search.call_args.args[0].size, (34, 44))
+        self.assertEqual(result['recognition']['bottle_detection']['count'], 2)
+        self.assertEqual(result['recognition']['bottle_detection']['selection'], 'automatic')
+        self.assertAlmostEqual(result['recognition']['label_detection']['bbox'][0], 0.296, places=3)
+
+    def test_web_selected_bottle_skips_automatic_instance_selection(self):
+        self.recognizer._bottle_detector = Mock()
+        self.recognizer.visual.search.return_value = []
+        with patch.dict(os.environ, {'CV_ENABLED': 'true'}):
+            result = self.recognizer.recognize(
+                self.photo, mode='image_full', bottle_box=[.2, .1, .8, .9]
+            )
+        self.recognizer._bottle_detector.detect.assert_not_called()
+        self.assertEqual(result['recognition']['bottle_detection']['selection'], 'user')
+
     def test_full_bottle_leader_is_not_replaced_by_a_wrong_crop(self):
         self.recognizer.catalog = WineCatalog.from_rows([
             {'Slug': 'relicta', 'Название вина': 'Реликта', 'Винодельня': 'Реликта'},

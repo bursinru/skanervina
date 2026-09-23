@@ -2,7 +2,9 @@ import tempfile
 import os
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
+from io import BytesIO
+from PIL import Image
 from fastapi.testclient import TestClient
 from app.main import app
 from app import storage
@@ -66,6 +68,35 @@ class ApiTests(unittest.TestCase):
         items = self.client.get('/v1/search', params={'q': 'Фанагория Blanc de Blancs'}).json()['items']
         self.assertTrue(items)
         self.assertEqual(self.client.get('/v1/catalog/' + items[0]['slug']).status_code, 200)
+
+    def test_web_can_request_bottle_boxes_and_pass_a_selected_box(self):
+        output = BytesIO()
+        Image.new('RGB', (40, 60), 'black').save(output, format='PNG')
+        photo = ('bottles.png', output.getvalue(), 'image/png')
+        proposals = {
+            'available': True,
+            'count': 2,
+            'primary_box': [.2, .1, .8, .9],
+            'candidates': [{'bbox': [.2, .1, .8, .9], 'confidence': .9, 'priority': .8}],
+            'needs_selection': True,
+        }
+        with patch('app.main.recognizer.detect_bottles', return_value=proposals):
+            detected = self.client.post('/v1/bottles', files={'image': photo})
+        self.assertEqual(detected.status_code, 200)
+        self.assertEqual(detected.json()['count'], 2)
+
+        result = {'status': 'unknown', 'recognition': {'method': 'test'}}
+        selected = [.2, .1, .8, .9]
+        with patch('app.main.recognize_upload', new=AsyncMock(return_value=result)) as recognize_upload:
+            response = self.client.post(
+                '/v1/recognize',
+                files={'image': photo},
+                data={'bottle_box': '[0.2,0.1,0.8,0.9]'},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(recognize_upload.await_args.args[-1], selected)
+        config = self.client.get('/config.js').text
+        self.assertIn('bottleDetectionEndpoint', config)
 
     def test_metrics_are_protected_and_debug_is_open(self):
         result = {'status': 'uncertain', 'slug': 'fanagoria-test', 'wine': {'slug': 'fanagoria-test', 'name': 'Wine', 'winery': 'Test'}, 'confidence': .8, 'recognition': {'similarity': .8, 'timings_ms': {'total': 123}, 'label_detection': {'contour': [[.3, .6], [.7, .6], [.7, .9], [.3, .9]]}}}

@@ -6,12 +6,12 @@ import json
 import os
 from pathlib import Path
 
-from PIL import Image, ImageOps
+from PIL import Image
 
 from app.database import connect
 from app.image_io import register_decoders
 from app.import_catalog import load_catalog
-from app.label_detection import crop_label, detect_label
+from app.label_detection import crop_label, detect_label, label_rgb
 from app.label_signals import blend_candidates, crop_color_features
 from app.settings import settings
 from app.vision import MODEL_ID, ImageEncoder, best_by_slug, split_full_crop
@@ -103,7 +103,7 @@ def main():
             for path in batch_paths:
                 try:
                     with Image.open(path) as im:
-                        rgb = ImageOps.exif_transpose(im).convert("RGB")
+                        rgb = label_rgb(im)
                     if rgb.width * rgb.height > 24_000_000:
                         errors.append({"file": path.name, "status": "error", "reason": "too_large"})
                         continue

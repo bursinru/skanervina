@@ -3,10 +3,11 @@ import os
 import logging
 from time import perf_counter
 from io import BytesIO
+from threading import Lock
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .catalog import WineCatalog, normalize
-from .label_detection import crop_front_design, crop_label, crop_quality, detect_label, enhance_label, label_rgb
+from .label_detection import LabelDetection, crop_front_design, crop_label, crop_quality, detect_label, enhance_label, label_rgb
 from .label_signals import blend_candidates, crop_color_features
 from .ranking import distinct_margin, is_visual_match, ranking_metrics, same_label_family
 from .recommend import alternatives as recommend_alternatives
@@ -38,6 +39,9 @@ class Recognizer:
         self.visual = None
         self.visual_status = 'disabled'
         self._catalog_crop_cache: Dict[str, Optional[str]] = {}
+        self._bottle_detector = None
+        self._bottle_detector_error = None
+        self._bottle_detector_lock = Lock()
         if os.getenv('CV_ENABLED', 'false').lower() == 'true':
             try:
                 from .vision import VisualSearch
@@ -80,7 +84,7 @@ class Recognizer:
 
     @staticmethod
     def _decode_image(image_bytes: bytes):
-        from PIL import Image, ImageOps
+        from PIL import Image
         from .image_io import register_decoders
 
         register_decoders()
@@ -88,7 +92,7 @@ class Recognizer:
             if image.width * image.height > 24_000_000:
                 return None, "image_dimensions_too_large"
             image.load()
-            return ImageOps.exif_transpose(image).convert("RGB"), None
+            return label_rgb(image), None
 
     @staticmethod
     def _image_bytes(image) -> bytes:
@@ -114,13 +118,92 @@ class Recognizer:
             return "ocr"
         return "combined"
 
-    def recognize(self, image_bytes: bytes, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None, compare_slug=None) -> Dict[str, Any]:
+    def recognize(self, image_bytes: bytes, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None, compare_slug=None, bottle_box=None) -> Dict[str, Any]:
         started = perf_counter()
-        result = self._recognize(image_bytes, mode, include_candidates, ocr_enabled, compare_slug)
+        result = self._recognize(image_bytes, mode, include_candidates, ocr_enabled, compare_slug, bottle_box)
         result.setdefault('recognition', {}).setdefault('timings_ms', {})['total'] = round((perf_counter() - started) * 1000, 1)
         return result
 
-    def _recognize(self, image_bytes: bytes, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None, compare_slug=None) -> Dict[str, Any]:
+    def detect_bottles(self, image_bytes: bytes) -> Dict[str, Any]:
+        """Return bottle-instance proposals for the web's optional picker."""
+
+        try:
+            image, validation_error = self._decode_image(image_bytes)
+        except Exception:
+            image, validation_error = None, "invalid_image"
+        if validation_error:
+            return {"available": False, "count": 0, "candidates": [], "reason": validation_error}
+        result = self._detect_bottles_in_image(image)
+        return result or {"available": False, "count": 0, "candidates": [], "reason": "unavailable"}
+
+    def _detect_bottles_in_image(self, image):
+        if os.getenv('CV_ENABLED', 'false').lower() != 'true' or self._bottle_detector_error:
+            return None
+        with self._bottle_detector_lock:
+            if self._bottle_detector is None:
+                try:
+                    from .bottle_detection import BottleDetector
+
+                    self._bottle_detector = BottleDetector(os.getenv('CV_DEVICE', 'cpu'))
+                except Exception as error:
+                    self._bottle_detector_error = error
+                    logging.exception('Could not initialize bottle detector')
+                    return None
+        try:
+            return self._bottle_detector.detect(image)
+        except Exception as error:
+            self._bottle_detector_error = error
+            logging.exception('Bottle detection is unavailable; using label-only fallback')
+            return None
+
+    @staticmethod
+    def _crop_bottle(image, box):
+        if not isinstance(box, (list, tuple)) or len(box) != 4:
+            return image, None
+        try:
+            left, top, right, bottom = (float(value) for value in box)
+        except (TypeError, ValueError):
+            return image, None
+        if not (0 <= left < right <= 1 and 0 <= top < bottom <= 1):
+            return image, None
+        width, height = image.size
+        pixel_left, pixel_top = round(left * width), round(top * height)
+        pixel_right, pixel_bottom = round(right * width), round(bottom * height)
+        pad_x = max(2, round((pixel_right - pixel_left) * 0.035))
+        pad_y = max(2, round((pixel_bottom - pixel_top) * 0.02))
+        bounds = (
+            max(0, pixel_left - pad_x),
+            max(0, pixel_top - pad_y),
+            min(width, pixel_right + pad_x),
+            min(height, pixel_bottom + pad_y),
+        )
+        if (bounds[2] - bounds[0]) * (bounds[3] - bounds[1]) > width * height * 0.94:
+            return image, None
+        return image.crop(bounds), bounds
+
+    @staticmethod
+    def _map_detection_to_image(detection: LabelDetection, crop_bounds, image_size):
+        if crop_bounds is None:
+            return detection
+        left, top, right, bottom = crop_bounds
+        image_width, image_height = image_size
+        crop_width, crop_height = right - left, bottom - top
+
+        def point(x, y):
+            return ((left + x * crop_width) / image_width, (top + y * crop_height) / image_height)
+
+        box = detection.bbox
+        mapped_box = (
+            (left + box[0] * crop_width) / image_width,
+            (top + box[1] * crop_height) / image_height,
+            (left + box[2] * crop_width) / image_width,
+            (top + box[3] * crop_height) / image_height,
+        )
+        mapped_quad = tuple(point(x, y) for x, y in detection.quad) if detection.quad else None
+        mapped_contour = tuple(point(x, y) for x, y in detection.contour) if detection.contour else None
+        return LabelDetection(mapped_box, detection.confidence, detection.method, mapped_quad, mapped_contour)
+
+    def _recognize(self, image_bytes: bytes, mode: str = "combined", include_candidates: bool = False, ocr_enabled=None, compare_slug=None, bottle_box=None) -> Dict[str, Any]:
         if mode not in self.MODES:
             return {
                 "status": "unknown",
@@ -148,18 +231,32 @@ class Recognizer:
         decode_ms = (perf_counter() - decode_started) * 1000
 
         detection_started = perf_counter()
-        detection = detect_label(image)
+        bottle_result = None
+        selected_box = bottle_box
+        selection_method = 'user' if bottle_box is not None else 'automatic'
+        bottle_detection_ms = 0.0
+        if selected_box is None:
+            bottle_started = perf_counter()
+            bottle_result = self._detect_bottles_in_image(image)
+            bottle_detection_ms = (perf_counter() - bottle_started) * 1000
+            if bottle_result and bottle_result.get('available'):
+                selected_box = bottle_result.get('primary_box')
+            if selected_box is None:
+                selection_method = 'label_fallback'
+        search_image, bottle_crop_bounds = self._crop_bottle(image, selected_box)
+        local_detection = detect_label(search_image)
+        display_detection = self._map_detection_to_image(local_detection, bottle_crop_bounds, image.size)
         detection_ms = (perf_counter() - detection_started) * 1000
         crop_started = perf_counter()
-        quality = crop_quality(image, detection)
+        quality = crop_quality(search_image, local_detection)
         if quality['usable']:
-            label = crop_label(image, detection, preserve_pixels=True)
+            label = crop_label(search_image, local_detection, preserve_pixels=True)
             query_view = 'label'
         elif 'small_upper_fragment' in quality['reasons']:
-            label = crop_front_design(image, detection)
+            label = crop_front_design(search_image, local_detection)
             query_view = 'front_design'
         else:
-            label = image
+            label = search_image
             query_view = 'full_image'
         crop_ms = (perf_counter() - crop_started) * 1000
         kind = self._mode_kind(mode)
@@ -171,7 +268,7 @@ class Recognizer:
             enhanced = label
             enhancement_ms = 0.0
         if mode in {"image_full", "ocr_full"}:
-            work_image = image
+            work_image = search_image
         elif mode in {"image_auto_enhanced", "ocr_auto_enhanced"}:
             work_image = enhanced
         else:
@@ -182,16 +279,22 @@ class Recognizer:
                 "method": method,
                 "crop_quality": quality,
                 "query_view": 'full_image' if mode in {'image_full', 'ocr_full'} else query_view,
+                "bottle_detection": {
+                    "count": bottle_result.get('count') if bottle_result else None,
+                    "selected_bbox": list(selected_box) if selected_box is not None else None,
+                    "selection": selection_method,
+                },
                 "label_detection": {
-                    "bbox": [round(value, 4) for value in detection.bbox],
-                    "confidence": detection.confidence,
-                    "contour": [[round(x, 5), round(y, 5)] for x, y in detection.contour] if detection.contour else None,
-                    "method": detection.method,
-                    "quad": [[round(point[0], 4), round(point[1], 4)] for point in detection.quad] if detection.quad else None,
+                    "bbox": [round(value, 4) for value in display_detection.bbox],
+                    "confidence": display_detection.confidence,
+                    "contour": [[round(x, 5), round(y, 5)] for x, y in display_detection.contour] if display_detection.contour else None,
+                    "method": display_detection.method,
+                    "quad": [[round(point[0], 4), round(point[1], 4)] for point in display_detection.quad] if display_detection.quad else None,
                 },
                 "timings_ms": {
                     "decode": round(decode_ms, 1),
                     "label_detection": round(detection_ms, 1),
+                    "bottle_detection": round(bottle_detection_ms, 1),
                     "label_crop": round(crop_ms, 1),
                     "enhancement": round(enhancement_ms, 1),
                 },
@@ -212,8 +315,8 @@ class Recognizer:
         if self.visual:
             visual_started = perf_counter()
             candidates = self.visual.search(work_image, limit=8)
-            if mode == "combined" and work_image is not image:
-                candidates = merge_query_views(candidates, self.visual.search(image, limit=8), limit=8)
+            if mode == "combined" and work_image is not search_image:
+                candidates = merge_query_views(candidates, self.visual.search(search_image, limit=8), limit=8)
             visual_ms = (perf_counter() - visual_started) * 1000
             if not candidates:
                 metrics = base_metrics("siglip2+pgvector")
