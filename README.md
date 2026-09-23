@@ -1,63 +1,38 @@
 # Своё Вино — сканер этикеток
 
-Мобильный интерфейс и настоящий локальный backend. Основной стек: **Nuxt / Nitro → Python (SigLIP 2 + OCR) → PostgreSQL / pgvector**, перенос на обычный сервер через Docker Compose.
+Мобильный сканер: **Nuxt → Python (SigLIP 2 + OCR) → PostgreSQL / pgvector**. Запуск на сервере — Docker Compose из корня репозитория.
 
-## Открыть локально
+## Сборка для организаторов
 
-После подготовки базы и визуального индекса по [инструкции backend](backend/README.md):
-
-```sh
-npm run backend
-# Во втором терминале:
-npm run build:server
-HOST=127.0.0.1 npm --prefix gateway start
-# http://localhost:3000/scanner
-```
-
-На этой машине подготовлены отдельные PostgreSQL и Python-окружение. Переменные подключения находятся в исключённом из Git `backend/.env.local`. Сайт и API работают на одном адресе; внешний CV API не нужен.
-
-## Возможности
-
-- Камера, загрузка JPG/PNG/WebP, предпросмотр и отмена запроса.
-- Поиск фотографии по векторам SigLIP 2 (OCR по умолчанию выключен).
-- Поиск по названию вина и винодельни через кнопку лупы.
-- Карточки реального каталога, рейтинг, вкус, гастросочетания, российские аналоги и цифровой сомелье.
-- Сохранённые вина и оценки в PostgreSQL, отдельный анонимный профиль для каждого браузера.
-- JSON API и импорт CSV/JSON, включая обёртку attributes/data из Strapi.
-- Docker Compose для Nuxt, сервиса распознавания и PostgreSQL; постоянные volumes, пример Nginx и команды резервного копирования.
-
-Распознавание пока является baseline: похожие этикетки возвращают `uncertain`, similarity не означает вероятность правильного ответа. Нужна дальнейшая калибровка на размеченных снимках. Анонимный профиль пока не имеет входа и восстановления после очистки cookie. Полная CMS Strapi не развёрнута: реализован импорт каталога.
-
-## Статический интерфейс
+Нужны Docker и отдельно каталог. В Git его нет: скопируйте в `Датасет/` таблицу `strapi_output0709_enriched.csv` и фотографии `prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads`. Дополнительные реальные фото уже лежат в репозитории, в `Датасет/extra-labels`. При копировании каталога эту папку не удаляйте.
 
 ```sh
-npm run dev
-# http://localhost:4173/scanner — только фронтенд
-npm run build
-npm run preview
+cp .env.example .env
+# В .env задайте POSTGRES_PASSWORD — длинная случайная hex-строка.
+docker compose build
+docker compose up -d db
+docker compose run --rm recognition python -m app.import_catalog \
+  --catalog /catalog/strapi_output0709_enriched.csv --index \
+  --images /catalog/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads
+docker compose up -d
+curl http://127.0.0.1:3000/healthz
 ```
 
-Эта сборка по умолчанию не подключена к backend. `SCANNER_RECOGNITION_ENDPOINT` и `SCANNER_IMAGE_BASE_URL` настраивают отдельную статическую публикацию. Для серверных сохранений используйте единый адрес Nuxt. Прежний `vercel.json` остаётся для статического варианта; основной серверный стек описан в `compose.yaml`.
+Сканер: `http://127.0.0.1:3000/scanner`. Первый запуск скачивает веса моделей, нужно несколько гигабайт свободного места. GPU не нужен.
 
-## Данные
+Импорт сам подключает `Датасет/extra-labels`: папка называется slug вина, внутри её фотографии. Кропы этикеток нарезает алгоритм по студийным снимкам, отдельно их загружать не нужно. Если детектор уже меняли на заполненной базе, повторите импорт с `--force-crops` и перед этим остановите recognition.
 
-Локальный CSV `Датасет/strapi_output0709_enriched.csv` дополняет исходный каталог рейтингом, характеристиками, описаниями и ссылками на источник. `scripts/enrich_vino_svoe.py` обновляет обогащение публичного каталога:
+Подробности API, порогов и резервной копии: [backend/README.md](backend/README.md).
 
-```sh
-python3 -m pip install -r scripts/requirements.txt
-python3 scripts/enrich_vino_svoe.py
-```
+## Что умеет сканер
 
-Датасет, фото, модели и локальная база не входят в Git и Docker build context. Переносите каталог отдельно или используйте дамп PostgreSQL. Фотографии пользователя не сохраняются; изображения карточек пока поступают с CDN «Своё Вино».
-
-Для отдельной выгрузки фотографий из отзывов Otzovik подготовлен сборщик `scripts/scrape_otzovik_wines.py`. Он сохраняет независимый набор в `Датасет/otzovik_wines`, а файл `images.csv` связывает каждую фотографию с вином и конкретным отзывом. Инструкция и ограничения: [Датасет/otzovik_wines/README.md](Датасет/otzovik_wines/README.md).
+- Камера и загрузка фото, поиск по этикетке и по целой бутылке.
+- Карточка каталога, рейтинг, вкус, гастросочетания и цифровой сомелье.
+- Поиск по названию. Сохранённые вина в анонимном профиле браузера.
 
 ## Проверки
 
 ```sh
 npm run test:backend
-npm run build
 npm run build:server
 ```
-
-Полные инструкции запуска, импорта, API и переноса: [backend/README.md](backend/README.md). Слои пайплайна: [ARCHITECTURE.md](ARCHITECTURE.md).

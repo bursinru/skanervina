@@ -16,8 +16,10 @@ __pycache__/
 # Eval dumps, crop previews and local recognition reports (do not commit to GitHub)
 reports/
 
-# Large local datasets and extracted media (do not commit to GitHub)
-Датасет/
+# Large local datasets and extracted media (do not commit to GitHub).
+# Extra real photos stay in the repo; the rest of the catalog is copied separately.
+Датасет/*
+!Датасет/extra-labels/
 **/datasets/
 **/dataset/
 *.parquet

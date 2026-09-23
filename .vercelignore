@@ -1,7 +1,0 @@
-# Keep local datasets out of Vercel uploads when deploying from this folder.
-Датасет/
-backend/
-dist/
-node_modules/
-.git/
-.DS_Store

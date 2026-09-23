@@ -27,6 +27,15 @@ def extra_files(root: Path, slug: str) -> list:
     )
 
 
+def resolve_extra_images(catalog: Path, explicit: Path | None = None) -> Path | None:
+    """Use an explicit folder, or extra-labels next to the catalog file."""
+
+    if explicit is not None:
+        return explicit
+    candidate = catalog.parent / "extra-labels"
+    return candidate if candidate.is_dir() else None
+
+
 def crop_view_digest(file_digest: str) -> str:
     return hashlib.sha256(f'crop:{file_digest}'.encode()).hexdigest()
 
@@ -89,6 +98,8 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.batch_size <= 64:
         parser.error('--batch-size must be between 1 and 64')
+    if args.extra_images is None:
+        args.extra_images = resolve_extra_images(args.catalog)
     migrate()
     catalog = load_catalog(args.catalog)
     wines = list(catalog._wines.values())
@@ -128,6 +139,8 @@ def main():
     if not args.index:
         return
     extra_root = args.extra_images.resolve() if args.extra_images else None
+    if extra_root:
+        print(json.dumps({'extra_images': str(extra_root)}), flush=True)
     if extra_root and not extra_root.is_dir():
         raise ValueError('--extra-images must be a directory')
     if not extra_root and (not args.images or not args.images.is_dir()):

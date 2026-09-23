@@ -1,5 +1,5 @@
-// Local fallback configuration. For Vercel, set the same values as project
-// environment variables; scripts/build.mjs injects them into dist/config.js.
+// Fallback for the static preview. scripts/build.mjs rewrites dist/config.js.
+// The Docker scanner serves config.js from the recognition service.
 window.SCANNER_CONFIG = {
   // No photo is sent when the endpoint is empty.
   recognitionEndpoint: '',

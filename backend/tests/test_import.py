@@ -19,6 +19,20 @@ class ImportTests(unittest.TestCase):
             self.assertEqual(catalog.get('test-wine').to_card()['public_rating'], 4.2)
             self.assertEqual(catalog.get('test-wine').to_card()['dishes'], ['Рыба'])
 
+    def test_extra_images_default_to_the_catalog_folder(self):
+        from app.import_catalog import resolve_extra_images
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog = root / 'catalog.csv'
+            catalog.write_text('slug\n')
+            self.assertIsNone(resolve_extra_images(catalog))
+            extra = root / 'extra-labels'
+            extra.mkdir()
+            self.assertEqual(resolve_extra_images(catalog), extra)
+            override = root / 'other'
+            override.mkdir()
+            self.assertEqual(resolve_extra_images(catalog, override), override)
+
     def test_extra_files_only_images_in_slug_folder(self):
         from app.import_catalog import extra_files
         with tempfile.TemporaryDirectory() as directory:

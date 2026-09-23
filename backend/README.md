@@ -58,7 +58,10 @@ docker compose run --rm recognition python -m app.import_catalog \
   --images /catalog/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads
 docker compose up -d
 curl http://127.0.0.1:3000/healthz
+# http://127.0.0.1:3000/scanner
 ```
+
+Импорт сам берёт `Датасет/extra-labels` (в контейнере `/catalog/extra-labels`), если папка есть. Внутри — каталоги с именем slug и фотографии этой бутылки. Кропы этикеток считает детектор по студийным снимкам. После смены детектора на уже заполненной базе добавьте `--force-crops`: полные фото бутылок при этом не пересчитываются. Перед таким прогоном остановите сервис распознавания, чтобы две модели не сидели в памяти одновременно.
 
 4. Настройте Nginx/Caddy с HTTPS перед `127.0.0.1:3000`. Пример Nginx: `deploy/nginx.conf.example` (поменяйте домен и добавьте TLS). HTTPS нужен для камеры телефона. Python и PostgreSQL не публикуются наружу.
 
