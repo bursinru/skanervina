@@ -1,5 +1,6 @@
 """Cheap label-color and OCR extras on top of SigLIP cosine scores."""
 
+import os
 from typing import Any, Dict, Mapping, Optional, Sequence
 from difflib import SequenceMatcher
 
@@ -190,6 +191,56 @@ def _lock_visual_leader(rows: list) -> list:
     return [leader] + rest
 
 
+def _distinguishing_tokens(wine: CatalogWine, family: Sequence[CatalogWine]) -> set:
+    """Name/category/grape words of one family member that its siblings lack."""
+
+    own = {word for word in tokens(f"{wine.name} {wine.category} {' '.join(wine.grapes)}") if len(word) >= 4 and word.isalpha()}
+    others = set()
+    for sibling in family:
+        if sibling.slug != wine.slug:
+            others |= tokens(f"{sibling.name} {sibling.category} {' '.join(sibling.grapes)}")
+    return own - others
+
+
+def _ocr_hit(word: str, text_tokens: set) -> bool:
+    if word in text_tokens:
+        return True
+    return len(word) >= 6 and any(
+        len(token) >= 6 and SequenceMatcher(None, word, token).ratio() >= 0.85 for token in text_tokens
+    )
+
+
+def family_tiebreak(rows: list, catalog, ocr_text: str, window: float = 0.08) -> list:
+    """Within one producer's line, let OCR of sweetness/colour/grape words pick the SKU.
+
+    OCR_STOP drops these words for cross-producer scoring because every label has
+    them; between siblings they are the only thing that differs.
+    """
+
+    from .ranking import same_label_family
+
+    if len(rows) < 2 or not ocr_text:
+        return rows
+    leader = catalog.get(rows[0]["slug"])
+    if leader is None:
+        return rows
+    top_score = float(rows[0]["score"])
+    family = [leader] + [
+        catalog.get(row["slug"]) for row in rows[1:]
+        if top_score - float(row["score"]) <= window and same_label_family(leader, catalog.get(row["slug"]))
+    ]
+    family = [wine for wine in family if wine is not None]
+    if len(family) < 2:
+        return rows
+    text_tokens = tokens(ocr_text)
+    hits = {wine.slug: sum(_ocr_hit(word, text_tokens) for word in _distinguishing_tokens(wine, family)) for wine in family}
+    best = max(hits, key=hits.get)
+    if hits[best] == 0 or list(hits.values()).count(hits[best]) > 1 or best == leader.slug:
+        return rows
+    chosen = next(row for row in rows if row["slug"] == best)
+    return [{**chosen, "family_ocr": hits[best]}] + [row for row in rows if row["slug"] != best]
+
+
 def blend_candidates(
     candidates: Sequence[Mapping[str, Any]],
     catalog,
@@ -223,4 +274,7 @@ def blend_candidates(
             }
         )
     blended.sort(key=lambda row: row["score"], reverse=True)
-    return _lock_visual_leader(blended)
+    ranked = _lock_visual_leader(blended)
+    if ocr_enabled and os.getenv("OCR_FAMILY", "false").lower() == "true":
+        ranked = family_tiebreak(ranked, catalog, ocr_text)
+    return ranked

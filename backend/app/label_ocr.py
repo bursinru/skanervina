@@ -1,6 +1,7 @@
 """Shared, local OCR for query labels and precomputed catalog references."""
 import hashlib
 import json
+import logging
 from pathlib import Path
 
 from PIL import Image, ImageOps
@@ -30,9 +31,13 @@ def read_label(image, languages="rus+eng", psm=6):
 def load_references(path, languages="rus+eng"):
     try:
         payload = json.loads(Path(path).read_text())
-        if (payload.get("pipeline_version") != pipeline_version()
-                or payload.get("language_version") != pipeline_version() + ':' + languages):
+        if not str(payload.get("language_version", "")).endswith(':' + languages):
             return {}
+        if payload.get("pipeline_version") != pipeline_version():
+            # A detector tweak shifts crops slightly; the label text of each wine stays
+            # valid. Dropping all references silently removed most OCR evidence.
+            logging.warning("Catalog OCR index %s was built with %s (current %s); rebuild with "
+                            "scripts/build_catalog_ocr.py", path, payload.get("pipeline_version"), pipeline_version())
         return {slug: entry["text"] for slug, entry in payload["entries"].items()
                 if entry.get("status") == "ok" and entry.get("text", "").strip()}
     except (OSError, ValueError, KeyError, TypeError):

@@ -5,8 +5,17 @@ from collections import defaultdict
 from threading import Lock
 from PIL import Image, ImageOps
 
-MODEL_ID = 'google/siglip2-base-patch16-224'
-MODEL_REVISION = '75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2'
+DEFAULT_MODEL_ID = 'google/siglip2-base-patch16-224'
+DEFAULT_MODEL_REVISION = '75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2'
+MODEL_ID = os.getenv('CV_MODEL_ID', DEFAULT_MODEL_ID)
+MODEL_REVISION = DEFAULT_MODEL_REVISION if MODEL_ID == DEFAULT_MODEL_ID else (os.getenv('CV_MODEL_REVISION') or None)
+# squash: legacy stretch to a square; pad: keep aspect ratio on a neutral square.
+RESIZE_MODE = os.getenv('CV_RESIZE', 'squash')
+PAD_COLOR = (255, 255, 255)
+
+
+def encoder_cache_key():
+    return hashlib.sha256(f'{MODEL_ID}@{MODEL_REVISION}:{RESIZE_MODE}'.encode()).hexdigest()[:16]
 
 
 def best_by_slug(rows, limit=5):
@@ -58,11 +67,18 @@ class ImageEncoder:
         torch.set_num_threads(int(os.getenv('CV_THREADS', '4')))
         self.processor = AutoImageProcessor.from_pretrained(MODEL_ID, revision=MODEL_REVISION, use_fast=False)
         self.model = SiglipVisionModel.from_pretrained(MODEL_ID, revision=MODEL_REVISION).to(self.device).eval()
+        self.size = int(self.model.config.image_size)
+
+    def _prepare(self, image):
+        image = ImageOps.exif_transpose(image).convert('RGB')
+        if RESIZE_MODE == 'pad':
+            return ImageOps.pad(image, (self.size, self.size), Image.Resampling.BICUBIC, color=PAD_COLOR)
+        return image.resize((self.size, self.size), Image.Resampling.BILINEAR)
 
     def encode(self, images):
         # Match the pinned processor's 224px bilinear resize before NumPy conversion.
         # This avoids costly full-resolution arrays for phone photos on CPU.
-        prepared = [ImageOps.exif_transpose(image).convert('RGB').resize((224, 224), Image.Resampling.BILINEAR) for image in images]
+        prepared = [self._prepare(image) for image in images]
         with self.lock, self.torch.inference_mode():
             inputs = self.processor(images=prepared, return_tensors='pt').to(self.device)
             features = self.model(**inputs).pooler_output

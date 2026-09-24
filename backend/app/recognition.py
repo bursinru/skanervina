@@ -13,6 +13,7 @@ from .ranking import distinct_margin, is_visual_match, ranking_metrics, same_lab
 from .recommend import alternatives as recommend_alternatives
 from .settings import Settings
 from .label_ocr import read_label, load_references
+from .local_features import geometric_confirmed as local_confirmed, rerank as local_rerank
 from .vision import merge_query_views
 from pathlib import Path
 
@@ -42,6 +43,8 @@ class Recognizer:
         self._bottle_detector = None
         self._bottle_detector_error = None
         self._bottle_detector_lock = Lock()
+        self._local = None
+        self._local_error = None
         if os.getenv('CV_ENABLED', 'false').lower() == 'true':
             try:
                 from .vision import VisualSearch
@@ -338,12 +341,24 @@ class Recognizer:
                 ocr_ms = (perf_counter() - ocr_started) * 1000
                 text_matches = self._text_matches(text)
             ranked = blend_candidates(candidates, self.catalog, color_features, text, run_ocr, self.ocr_references)
+            geo_ms, geo_confirmed = 0.0, False
+            if os.getenv('RERANK_LOCAL', 'false').lower() == 'true' and self._local_matcher() is not None:
+                geo_started = perf_counter()
+                top = int(os.getenv('RERANK_TOP', '5'))
+                views = [work_image] + ([search_image] if work_image is not search_image else [])
+                try:
+                    counts = self._local.verify(views, [item['slug'] for item in ranked[:top]], self._gallery_images)
+                    ranked = local_rerank(ranked[:top], counts) + ranked[top:]
+                    geo_confirmed = local_confirmed(ranked)
+                except Exception:
+                    logging.exception('Local feature verification failed')
+                geo_ms = (perf_counter() - geo_started) * 1000
             best = ranked[0]
             wine = self.catalog.get(best['slug'])
             runner = self.catalog.get(ranked[1]['slug']) if len(ranked) > 1 else None
             family_tie = same_label_family(wine, runner)
             margin = distinct_margin(ranked, self.catalog)
-            corroborated = bool(
+            ocr_corroborated = bool(
                 run_ocr
                 and text_matches
                 and wine
@@ -351,6 +366,7 @@ class Recognizer:
                 and text_matches[0].score >= self.MATCH_THRESHOLD
                 and self._text_evidence(text_matches[0])
             )
+            corroborated = ocr_corroborated or geo_confirmed
             matched = bool(wine) and is_visual_match(
                 best['score'],
                 margin,
@@ -379,7 +395,7 @@ class Recognizer:
                 ocr=ocr_status,
                 ocr_characters=len(text),
                 ocr_best={'slug': text_matches[0].wine.slug, 'score': round(text_matches[0].score, 4)} if text_matches else None,
-                ocr_corroborated=corroborated,
+                ocr_corroborated=ocr_corroborated,
                 ocr_text=text[:500],
                 ocr_enabled=bool(ocr_enabled),
                 color_enabled=False,
@@ -406,11 +422,13 @@ class Recognizer:
                     "full_score": item.get("full_score"),
                     "crop_score": item.get("crop_score"),
                     "best_view": item.get("best_view"),
+                    "inliers": item.get("inliers"),
                 }
                 for item in ranked[:5]
             ]
             metrics["candidates"] = ranking["top5"]
-            metrics["timings_ms"].update(visual=round(visual_ms, 1), ocr=round(ocr_ms, 1))
+            metrics["timings_ms"].update(visual=round(visual_ms, 1), ocr=round(ocr_ms, 1), local_features=round(geo_ms, 1))
+            metrics["geometric_confirmed"] = geo_confirmed
             probe = self._probe_slug(work_image, compare_slug, color_features, text, ocr_enabled, include_candidates)
             if probe is not None:
                 metrics["probe"] = probe
@@ -438,6 +456,28 @@ class Recognizer:
             return {'status': 'unknown', 'recognition': metrics}
         text, ocr_status = self._ocr(self._image_bytes(work_image), psm=6)
         return self._ocr_result(text, ocr_status, base_metrics('ocr+catalog'), 0.0, include_candidates)
+
+    def _local_matcher(self):
+        if self._local is None and self._local_error is None:
+            try:
+                from .local_features import LocalMatcher
+
+                self._local = LocalMatcher()
+            except Exception as error:
+                self._local_error = error
+                logging.exception('Local feature matcher is unavailable')
+        return self._local
+
+    def _gallery_images(self, slug):
+        wine = self.catalog.get(slug)
+        if not wine:
+            return []
+        try:
+            image = self._load_catalog_image(wine)
+        except Exception:
+            logging.exception('Could not load catalog image for %s', slug)
+            return []
+        return [image] if image is not None else []
 
     def _lookalike_cards(self, items: Iterable[Any], limit: int = 5) -> List[Dict[str, Any]]:
         cards: List[Dict[str, Any]] = []
