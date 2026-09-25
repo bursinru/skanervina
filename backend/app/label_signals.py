@@ -8,7 +8,6 @@ from PIL import Image
 
 from .catalog import CatalogWine, normalize, tokens
 
-COLOR_WEIGHT = 0.05
 OCR_WEIGHT = 0.12
 VISUAL_LOCK = 0.02
 OCR_STOP = {
@@ -121,18 +120,6 @@ def crop_color_features(image: Image.Image) -> Dict[str, Any]:
 
 
 def color_delta(features: Mapping[str, Any], wine: Optional[CatalogWine]) -> float:
-    tone = wine_tone(wine)
-    bottle = str(features.get("bottle_tone") or "unknown")
-    print_tone = str(features.get("print_tone") or "unknown")
-    paper = str(features.get("paper") or "mixed")
-    if tone == "unknown":
-        return 0.0
-    # Paint on a cream label (orange dress, ochre type) is about the wine, not the glass.
-    if print_tone == "orange":
-        if tone == "orange":
-            return COLOR_WEIGHT
-        if tone in {"white", "red"}:
-            return -COLOR_WEIGHT
     return 0.0
 
 
@@ -164,7 +151,7 @@ def _visual_score(item: Mapping[str, Any]) -> float:
 
 
 def _lock_visual_leader(rows: list) -> list:
-    """Color may break ties; it must not bury a clear label/bottle leader."""
+    """A clear label or bottle leader stays first. OCR may still lift a near sibling."""
 
     if len(rows) < 2:
         return rows
@@ -179,13 +166,6 @@ def _lock_visual_leader(rows: list) -> list:
     if float(ocr_best.get("ocr_delta") or 0.0) >= 0.06 and ocr_best.get("slug") != leader.get("slug"):
         if _visual_score(leader) - _visual_score(ocr_best) <= 0.05:
             return rows
-    color_best = max(rows, key=lambda row: float(row.get("color_delta") or 0.0))
-    if (
-        float(leader.get("color_delta") or 0.0) < 0
-        and float(color_best.get("color_delta") or 0.0) > 0
-        and _visual_score(leader) - _visual_score(color_best) <= 0.10
-    ):
-        return rows
     rest = sorted(others, key=lambda row: row["score"], reverse=True)
     return [leader] + rest
 

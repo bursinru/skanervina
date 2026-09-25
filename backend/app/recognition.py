@@ -331,26 +331,13 @@ class Recognizer:
             explicit_ocr = ocr_enabled
             if ocr_enabled is None:
                 ocr_enabled = os.getenv('CV_OCR_ENABLED', 'false').lower() == 'true'
-            run_ocr = bool(ocr_enabled) and (mode == "combined" or explicit_ocr is True)
-            if run_ocr:
-                ocr_started = perf_counter()
-                text, ocr_status = self._ocr(self._image_bytes(work_image), psm=6)
-                ocr_ms = (perf_counter() - ocr_started) * 1000
-                text_matches = self._text_matches(text)
-            ranked = blend_candidates(candidates, self.catalog, color_features, text, run_ocr, self.ocr_references)
+            ocr_allowed = bool(ocr_enabled) and (mode == "combined" or explicit_ocr is True)
+            ranked = blend_candidates(candidates, self.catalog, color_features, "", False, self.ocr_references)
             best = ranked[0]
             wine = self.catalog.get(best['slug'])
             runner = self.catalog.get(ranked[1]['slug']) if len(ranked) > 1 else None
             family_tie = same_label_family(wine, runner)
             margin = distinct_margin(ranked, self.catalog)
-            corroborated = bool(
-                run_ocr
-                and text_matches
-                and wine
-                and text_matches[0].wine.slug == best['slug']
-                and text_matches[0].score >= self.MATCH_THRESHOLD
-                and self._text_evidence(text_matches[0])
-            )
             matched = bool(wine) and is_visual_match(
                 best['score'],
                 margin,
@@ -358,12 +345,43 @@ class Recognizer:
                 min_margin=min_margin,
                 clear_match=clear_match,
                 family_tie=family_tie,
-                corroborated=corroborated,
             )
             # A high embedding score cannot validate a failed label detection.
-            # Keep suggestions available, but require text support for auto-match.
-            if mode != "image_full" and not quality['usable'] and not corroborated:
+            if mode != "image_full" and not quality['usable']:
                 matched = False
+            run_ocr = ocr_allowed and not matched
+            corroborated = False
+            if run_ocr:
+                ocr_started = perf_counter()
+                text, ocr_status = self._ocr(self._image_bytes(work_image), psm=6)
+                ocr_ms = (perf_counter() - ocr_started) * 1000
+                text_matches = self._text_matches(text)
+                ranked = blend_candidates(candidates, self.catalog, color_features, text, True, self.ocr_references)
+                best = ranked[0]
+                wine = self.catalog.get(best['slug'])
+                runner = self.catalog.get(ranked[1]['slug']) if len(ranked) > 1 else None
+                family_tie = same_label_family(wine, runner)
+                margin = distinct_margin(ranked, self.catalog)
+                corroborated = bool(
+                    text_matches
+                    and wine
+                    and text_matches[0].wine.slug == best['slug']
+                    and text_matches[0].score >= self.MATCH_THRESHOLD
+                    and self._text_evidence(text_matches[0])
+                )
+                matched = corroborated or (
+                    bool(wine) and is_visual_match(
+                        best['score'],
+                        margin,
+                        threshold=threshold,
+                        min_margin=min_margin,
+                        clear_match=clear_match,
+                        family_tie=family_tie,
+                        corroborated=corroborated,
+                    )
+                )
+                if mode != "image_full" and not quality['usable'] and not corroborated:
+                    matched = False
             method = "siglip2+pgvector+ocr" if run_ocr else "siglip2+pgvector"
             metrics = base_metrics(method)
             metrics.update(

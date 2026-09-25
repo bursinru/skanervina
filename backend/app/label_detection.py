@@ -225,6 +225,35 @@ def _saturated_label_box(pixels: np.ndarray):
     )
 
 
+def _paper_panel_above_color_band(pixels: np.ndarray, color_box: Sequence[int]):
+    """Prefer a broad paper label above a separate colored variety strip."""
+
+    height, width = pixels.shape[:2]
+    color_top = color_box[1]
+    if color_top < height * 0.68:
+        return None
+    span = _bottle_span(pixels, 0.18)
+    if span is None or span[1] - span[0] < width * 0.65:
+        return None
+    left, right = span
+    inset = max(1, round((right - left) * 0.08))
+    paper = _paper_mask(pixels)
+    row = paper[:, left + inset:right - inset].mean(axis=1)
+    flags = row > 0.72
+    flags[:round(height * 0.32)] = False
+    flags[color_top:] = False
+    flags = _fill_short_gaps(flags, max(5, round(height * 0.025)))
+    top, bottom = _longest_run(flags)
+    if not (
+        height * 0.34 < top < height * 0.62
+        and height * 0.22 < bottom - top < height * 0.48
+        and 0 <= color_top - bottom < height * 0.08
+    ):
+        return None
+    pad = max(2, round(height * 0.006))
+    return left, max(0, top - pad), right, min(height, bottom + pad)
+
+
 def _red_catalog_panel_band(pixels: np.ndarray):
     """Find a broad red/magenta front panel against similarly bright glass."""
 
@@ -2596,17 +2625,24 @@ def detect_label(image: Image.Image, *, catalog: bool = False) -> LabelDetection
                 panel_mask = None
                 best_score = max(best_score, 0.7)
         if method == "saturated_panel":
-            below = _band_below_colour(pixels, best_box)
-            if below is not None:
-                best_box = below
-                method = "paper_below"
+            above = _paper_panel_above_color_band(pixels, best_box)
+            if above is not None:
+                best_box = above
+                method = "paper_above_color"
                 panel_mask = None
                 best_score = max(best_score, 0.7)
             else:
-                trimmed_gold = _trim_saturated_shoulder(pixels, best_box)
-                if trimmed_gold != tuple(best_box):
-                    best_box = trimmed_gold
+                below = _band_below_colour(pixels, best_box)
+                if below is not None:
+                    best_box = below
+                    method = "paper_below"
                     panel_mask = None
+                    best_score = max(best_score, 0.7)
+                else:
+                    trimmed_gold = _trim_saturated_shoulder(pixels, best_box)
+                    if trimmed_gold != tuple(best_box):
+                        best_box = trimmed_gold
+                        panel_mask = None
     if catalog and method in {"connected_paper", "trimmed_panel"}:
         # A short paper hit on the emblem, while the gold field continues below.
         colour = _saturated_label_box(pixels)

@@ -47,12 +47,10 @@ class LabelColorTests(unittest.TestCase):
                 image.putpixel((x, y), (210, 92, 42))
         features = crop_color_features(image)
         self.assertNotEqual(features["bottle_tone"], "red")
-        orange = color_delta(features, self.catalog.get("orange"))
-        red = color_delta(features, self.catalog.get("red"))
-        self.assertGreaterEqual(orange, 0.0)
-        self.assertGreaterEqual(orange, red)
+        self.assertEqual(color_delta(features, self.catalog.get("orange")), 0.0)
+        self.assertEqual(color_delta(features, self.catalog.get("red")), 0.0)
 
-    def test_orange_print_prefers_orange_wine_over_white_sibling(self):
+    def test_orange_print_does_not_reorder_the_visual_leader(self):
         from app.label_signals import blend_candidates, crop_color_features
 
         catalog = WineCatalog.from_rows(
@@ -76,7 +74,9 @@ class LabelColorTests(unittest.TestCase):
             "",
             False,
         )
-        self.assertEqual(ranked[0]["slug"], "orange")
+        self.assertEqual(ranked[0]["slug"], "white")
+        self.assertEqual(ranked[0]["color_delta"], 0.0)
+        self.assertEqual(ranked[1]["color_delta"], 0.0)
 
     def test_orange_name_is_orange_tone(self):
         self.assertEqual(wine_tone(self.catalog.get("orange")), "orange")

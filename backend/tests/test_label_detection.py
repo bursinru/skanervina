@@ -1108,6 +1108,21 @@ class LabelDetectionTests(unittest.TestCase):
                 self.assertGreater(crop.height, image.height * 0.20)
                 self.assertLess(crop.height, image.height * 0.32)
 
+    def test_fanagoriya_green_wine_prefers_main_label_over_variety_strip(self):
+        image = Image.open(
+            Path(__file__).parents[2]
+            / "Датасет/prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads"
+            / "fanagoriya_zelyonoe_vino_risling_tsitronnyy_magaracha_beloe_polusuhoe_11_e4de13ab6b.webp"
+        )
+        detection = detect_label(image, catalog=True)
+        left, top, right, bottom = detection.bbox
+        self.assertEqual(detection.method, "paper_above_color")
+        self.assertLess(top, 0.43)
+        self.assertGreater(bottom, 0.74)
+        self.assertLess(bottom, 0.78)
+        self.assertGreater(right - left, 0.90)
+        self.assertGreater(crop_label(image, detection).height, image.height * 0.30)
+
     def test_catalog_detector_reproduces_manually_corrected_label_regions(self):
         uploads = (
             Path(__file__).parents[2]

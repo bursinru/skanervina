@@ -157,6 +157,14 @@ class VisualDecisionTests(unittest.TestCase):
         self.assertEqual(result['recognition']['ocr'], 'skipped')
         self.assertEqual(result['recognition']['method'], 'siglip2+pgvector')
 
+    def test_clear_visual_winner_skips_ocr(self):
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .90}, {'slug': 'b', 'score': .80}]
+        with patch.dict(os.environ, {'CV_OCR_ENABLED': 'true'}):
+            result = self.recognizer.recognize(self.photo)
+        self.recognizer._ocr.assert_not_called()
+        self.assertEqual(result['status'], 'matched')
+        self.assertEqual(result['recognition']['ocr'], 'skipped')
+
     def test_combined_mode_runs_ocr_when_enabled(self):
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .80}, {'slug': 'b', 'score': .79}]
         with patch.dict(os.environ, {'CV_OCR_ENABLED': 'true'}):
@@ -310,3 +318,5 @@ class RerankTests(unittest.TestCase):
         self.assertGreater(result['recognition']['ocr_delta'], 0)
         self.assertGreater(result['recognition']['ocr_delta'], result['ranking']['top5'][1]['ocr_delta'])
         self.assertEqual(result['recognition']['method'], 'siglip2+pgvector+ocr')
+        self.assertEqual(result['status'], 'matched')
+        self.assertEqual(result['wine']['slug'], 'white')
