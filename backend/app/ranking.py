@@ -58,7 +58,7 @@ def is_visual_match(
     family_tie: bool = False,
     corroborated: bool = False,
     gap_floor: float = 0.70,
-    gap_match: float = 0.06,
+    gap_match: float = 0.035,
 ) -> bool:
     if score >= threshold and (margin >= min_margin or family_tie or corroborated or score >= clear_match):
         return True

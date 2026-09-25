@@ -114,6 +114,12 @@ class VisualDecisionTests(unittest.TestCase):
         self.assertEqual(result['wine']['slug'], 'sikory-sb-reserve')
         self.assertTrue(result['recognition']['family_tie'])
 
+    def test_three_point_gap_shows_the_leader(self):
+        self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .738}, {'slug': 'b', 'score': .702}]
+        result = self.recognizer.recognize(self.photo)
+        self.assertEqual(result['status'], 'matched')
+        self.assertEqual(result['wine']['slug'], 'a')
+
     def test_clear_gap_matches_below_threshold(self):
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .72}, {'slug': 'b', 'score': .60}]
         result = self.recognizer.recognize(self.photo)
