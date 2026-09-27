@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=crop-gate-1" />
+  <link rel="stylesheet" href="/styles.css?v=wine-result-card-2" />
   <script src="/config.js" defer></script>
-  <script src="/app.js?v=crop-gate-1" type="module"></script>
+  <script src="/app.js?v=wine-result-card-2" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">К сканеру</a>
@@ -43,7 +43,7 @@
         <section class="scanner-card" aria-label="Сканирование этикетки">
           <div class="viewfinder" id="dropzone">
             <div class="viewfinder-top"><span class="lens-label"><span data-icon="scan"></span> СКАНИРОВАНИЕ</span></div>
-            <img class="example-bottle" id="example-bottle" src="/assets/blanc-de-blancs.webp" alt="Пример: бутылка Фанагория Blanc de Blancs" />
+            <img class="example-bottle scanner-shelf-background" id="example-bottle" src="/assets/scanner-wine-shelf.webp" alt="Полка с вином и бутылками" />
             <img id="photo-preview" class="photo-preview" alt="Загруженная этикетка" hidden />
             <div id="bottle-choice-layer" class="bottle-choice-layer" hidden>
               <p>На фото несколько бутылок. Нажмите на ту, которую нужно распознать.</p>
@@ -59,6 +59,10 @@
           <input id="file-input" type="file" accept="image/*,image/heic,image/heif,.heic,.heif,.jpg,.jpeg,.png,.webp,.avif" hidden />
         </section>
       </div>
+      <section class="recent-scans" id="recent-scans" aria-labelledby="recent-scans-title" hidden>
+        <div class="recent-scans-heading"><div><p class="eyebrow">ВАША ИСТОРИЯ</p><h2 id="recent-scans-title">Последние сканирования</h2></div><span>До трёх вин</span></div>
+        <div class="recent-scans-list" id="recent-scans-list"></div>
+      </section>
     </section>
     <section id="result-screen" hidden tabindex="-1"></section>
   </main>
@@ -80,7 +84,7 @@
   <aside class="compare-tray" id="compare-tray" aria-live="polite" hidden><div><strong><span id="compare-count-label">Сравнение</span></strong><p id="compare-tray-copy">Выбрано одно вино</p></div><button class="button primary" id="compare-tray-open" type="button">Сравнить <span id="compare-tray-count">0</span></button></aside>
   <dialog id="search-dialog"><div class="dialog-heading"><h2>Поиск по каталогу</h2><button class="icon-button" id="search-close" aria-label="Закрыть поиск">×</button></div><form id="catalog-search"><label for="wine-query">Название вина или винодельня</label><input id="wine-query" type="search" minlength="2" maxlength="200" required placeholder="Например, Фанагория" /><button class="button primary" type="submit">Найти</button></form><p id="search-status" role="status"></p><div id="search-results"></div></dialog>
   <dialog id="saved-dialog"><div class="dialog-heading"><h2>Мои вина</h2><button class="icon-button" id="saved-close" aria-label="Закрыть"><span data-icon="x"></span></button></div><p class="muted">Сохранены в этом браузере.</p><div id="saved-list"></div></dialog>
-  <dialog id="compare-dialog"><div class="dialog-heading"><div><h2>Сравнение вин</h2><p class="muted">До трёх бутылок рядом</p></div><button class="icon-button" id="compare-close" aria-label="Закрыть"><span data-icon="x"></span></button></div><div class="compare-list" id="compare-list"></div></dialog>
+  <dialog id="compare-dialog"><div class="dialog-heading"><div><h2>Сравнение вин</h2><p class="muted">До трёх бутылок рядом</p></div><button class="icon-button" id="compare-close" aria-label="Закрыть"><span data-icon="x"></span></button></div><p class="compare-scroll-hint">Листайте вбок, чтобы увидеть другие вина →</p><div class="compare-board" id="compare-board"><div class="compare-list" id="compare-list"></div><div class="compare-metrics" id="compare-metrics"></div></div><div class="compare-actions"><button class="button secondary" id="compare-clear" type="button"><span data-icon="compare"></span> Очистить всё</button><button class="button primary" id="compare-scan" type="button"><span data-icon="camera"></span> Сканировать другое</button></div></dialog>
   <div id="toast" class="toast" role="status" hidden></div>
 </body>
 </html>

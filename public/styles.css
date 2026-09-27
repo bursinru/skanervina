@@ -557,3 +557,254 @@ body{background:#fffdfb}
   #result-screen .rating-option{width:34px}
 }
 @media(prefers-reduced-motion:reduce){.glass-wine{transition:none}}
+
+/* Wine comparison */
+#compare-dialog{width:min(96vw,1060px);max-width:1060px;max-height:94vh;padding:36px;border:0;border-radius:28px;background:#fcf9f4;box-shadow:0 30px 90px #23181640}
+#compare-dialog::backdrop{background:#2c22208a;backdrop-filter:blur(8px)}
+#compare-dialog .dialog-heading{align-items:flex-start}
+#compare-dialog .dialog-heading h2{font:400 clamp(35px,5vw,60px)/1.05 Georgia,serif;letter-spacing:-.04em;color:#211c1a}
+#compare-dialog .dialog-heading p{margin:6px 0 0;font-size:17px;color:#99918b}
+#compare-close{width:58px;height:58px;flex:none;border:3px solid #ab783f;background:#fcf9f4;box-shadow:inset 0 0 0 5px #fcf9f4,0 0 0 1px #f4eadf}
+#compare-close svg{width:28px;height:28px;stroke-width:2}
+.compare-board{margin-top:24px}
+.compare-list{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0}
+.compare-card,.compare-add{min-width:0;min-height:390px;border-radius:20px;overflow:hidden}
+.compare-card{position:relative;padding:0;border:1px solid #fff;background:#f6f1e9;box-shadow:0 4px 22px #6a4c3612}
+.compare-art{height:278px;position:relative;display:grid;place-items:center;overflow:hidden;background:#e9dfd2}
+.compare-art::before{content:'';position:absolute;inset:0;background-image:linear-gradient(180deg,#f8ebdb55,#bd9d7944),var(--compare-backdrop,linear-gradient(125deg,#e7d5c1,#d7c4ad));background-size:cover;background-position:center;filter:saturate(.85)}
+.compare-art::after{content:'';position:absolute;inset:auto 0 0;height:70px;background:linear-gradient(transparent,#f6f1e9)}
+.compare-art img{position:relative;z-index:1;width:82%;height:96%;object-fit:contain;filter:drop-shadow(8px 9px 8px #251b1955)}
+.compare-card-placeholder{position:relative;z-index:1;width:auto;height:auto;margin:0;padding:10px 16px;background:#fcf9f4cc;border-radius:12px}
+.compare-remove{z-index:2;top:12px;right:12px;width:40px;height:40px;background:#fffdfbef;color:#6c1629;box-shadow:0 3px 12px #39231d22}
+.compare-remove svg{width:20px;height:20px}
+.compare-card-copy{position:relative;z-index:1;padding:6px 20px 20px;margin-top:-8px}
+.compare-card-copy small{display:block;letter-spacing:.12em;text-transform:uppercase;color:#5d5753;font-size:11px}
+.compare-card-copy h3{margin:5px 0 8px;font:400 clamp(21px,2.5vw,29px)/1.08 Georgia,serif;min-height:62px}
+.compare-card-copy p{margin:0;color:#8a817d;font-size:14px;line-height:1.35}
+.compare-add{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:16px;border:1px dashed #d7c5af;background:#fbf8f3;color:#211c1a;text-align:center}
+.compare-add:hover{background:#f5ede2;border-color:#ae7e4e}
+.compare-add-plus{display:grid;place-items:center;width:66px;height:66px;border:2px solid #d7c5af;border-radius:50%;font:38px/1 Georgia,serif}
+.compare-add strong{font:400 28px/1.1 Georgia,serif;max-width:160px}
+.compare-add small{font-size:15px;line-height:1.45;color:#8a817d}
+.compare-metrics{display:grid;gap:5px;margin-top:19px}
+.compare-metric-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:auto auto;min-height:66px;align-items:center;gap:1px 12px;padding:8px 17px;border-radius:24px;background:#f4f0e9}
+.compare-metric-label{grid-column:1/-1;display:flex;justify-content:center;align-items:center;gap:8px;font-size:14px;color:#655b58}
+.compare-metric-label span{font-size:20px;line-height:1;color:#853340;font-weight:600}
+.compare-metric-value{min-width:0;text-align:center;color:#201c1b;font-size:19px;line-height:1.25;overflow-wrap:anywhere}
+.compare-metric-row:last-child .compare-metric-value{font-size:14px}
+.compare-rating{font-size:25px;font-weight:600}
+.compare-rating span{color:#f4a43f;letter-spacing:.08em}
+.compare-segments{display:flex;justify-content:center;gap:3px}
+.compare-segments i{width:16%;max-width:36px;height:12px;border-radius:8px;background:#dedad5}
+.compare-segments i.is-filled{background:#8a3440}
+.compare-actions{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px}
+.compare-actions .button{min-height:62px;border-radius:25px;font-size:17px}
+.compare-actions .button.secondary{border-color:#862b3a;background:transparent;color:#81283a}
+.compare-actions .button.primary{background:#851f31}
+.compare-actions .icon-compare,.compare-actions svg{width:24px;height:24px}
+@media(max-width:720px){
+  #compare-dialog{width:calc(100vw - 16px);max-height:95vh;padding:22px 16px;border-radius:22px}
+  #compare-dialog .dialog-heading h2{font-size:37px}
+  #compare-dialog .dialog-heading p{font-size:13px}
+  #compare-close{width:43px;height:43px}
+  #compare-close svg{width:22px;height:22px}
+  .compare-board{overflow-x:auto;margin:18px -8px 0;padding:0 8px 8px}
+  .compare-list,.compare-metrics{min-width:670px}
+  .compare-list{grid-template-columns:repeat(3,1fr);gap:9px;margin:0}
+  .compare-card,.compare-add{display:block;min-height:310px}
+  .compare-art{height:205px}
+  .compare-card-copy{margin-top:-4px;padding:5px 10px 12px}
+  .compare-card-copy small{font-size:9px}
+  .compare-card-copy h3{font-size:20px;min-height:44px;margin:4px 0 5px}
+  .compare-card-copy p{font-size:11px}
+  .compare-add{display:flex;gap:10px}
+  .compare-add-plus{width:48px;height:48px;font-size:30px}
+  .compare-add strong{font-size:22px}
+  .compare-add small{font-size:12px}
+  .compare-metric-row{min-height:62px;padding:7px 10px}
+  .compare-actions{gap:8px;margin-top:14px}
+  .compare-actions .button{min-height:52px;padding:8px;font-size:12px;gap:5px}
+  .compare-actions .icon-compare,.compare-actions svg{width:18px;height:18px}
+}
+.compare-scroll-hint{display:none}
+@media(max-width:720px){.compare-scroll-hint{display:block;margin:13px 0 -10px;color:#8a817d;font-size:11px}}
+
+/* Result card refresh: bottle, rating, taste profile, then compact facts. */
+#result-screen .result-layout{gap:13px}
+#result-screen .wine-hero{display:grid;grid-template-columns:minmax(0,1fr);gap:15px;min-height:0;padding:14px;border-radius:30px;background:#f6f1e8;overflow:hidden}
+#result-screen .wine-main{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1fr);min-height:490px;column-gap:22px;align-items:stretch}
+#result-screen .wine-portrait{position:relative;grid-row:auto;min-height:490px;height:100%;margin:-14px 0 -4px -14px;border-radius:28px 0 0 0;overflow:hidden;isolation:isolate;background:#e3d3be}
+#result-screen .wine-portrait .wine-vineyard-backdrop{position:absolute;inset:0;z-index:0;width:100%;height:100%;object-fit:cover;object-position:40% center;opacity:.94;mix-blend-mode:normal}
+#result-screen .wine-portrait::after{content:'';position:absolute;inset:0;z-index:1;background:linear-gradient(90deg,#f6f1e800 45%,#f6f1e8 100%),linear-gradient(0deg,#f6f1e8 0%,#f6f1e800 19%);pointer-events:none}
+#result-screen .wine-portrait .wine-bottle{position:absolute;z-index:2;top:-1%;left:50%;transform:translateX(-50%);width:auto;height:112%;max-width:125%;max-height:none;object-fit:contain;mix-blend-mode:normal;filter:drop-shadow(9px 13px 9px #37241c47)}
+#result-screen .wine-portrait>span{position:relative;z-index:2;align-self:center;padding:20px;color:var(--muted);font-size:13px}
+#result-screen .wine-details{position:relative;z-index:2;min-width:0;padding:33px 24px 20px 0;align-self:start}
+#result-screen .wine-details .eyebrow{margin:0 44px 13px 0;font-size:14px;letter-spacing:1.5px;color:#a38b6b;text-transform:uppercase}
+#result-screen .wine-details h1{font:400 clamp(34px,4.1vw,52px)/1.06 Georgia,serif;letter-spacing:-1.25px;overflow-wrap:anywhere}
+#result-screen .wine-category{margin:14px 0 21px;font-size:19px;line-height:1.4;color:#827971}
+#result-screen .public-rating{margin:0 0 21px}
+#result-screen .public-rating-badge{display:flex;align-items:center;gap:11px;width:max-content;max-width:100%;padding:0;background:transparent;border-radius:0}
+#result-screen .public-rating-badge .rating-star{font-size:44px;line-height:1;color:#eba92e}
+#result-screen .public-rating-badge strong{font-size:48px;line-height:1;font-weight:600;color:#1c1918}
+#result-screen .public-rating-badge .rating-copy{display:grid;gap:2px;margin-left:3px}
+#result-screen .public-rating-badge .rating-copy small{max-width:none;font-size:15px;line-height:1.25;color:#7e746b}
+#result-screen .portrait-save{top:18px;right:18px;width:48px;height:48px;background:#fffdfb;color:var(--wine);box-shadow:0 4px 18px #48332d13}
+#result-screen .portrait-save svg{width:23px;height:23px}
+#result-screen .result-taste{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:15px 28px;align-items:center;margin:0;padding:20px 24px;border:2px solid #fffdfb;border-radius:25px;background:#fffdfbcc;backdrop-filter:blur(5px)}
+#result-screen .taste-profile{margin:0;padding:0;border:0}
+#result-screen .taste-profile-heading{display:flex;align-items:baseline;justify-content:space-between;flex-direction:row;gap:10px;margin:0 0 13px}
+#result-screen .taste-profile-heading h2{margin:0;font:500 21px/1.2 var(--font)}
+#result-screen .taste-profile-heading span{font-size:11px;white-space:nowrap;color:#958b82}
+#result-screen .taste-row{display:grid;grid-template-columns:132px minmax(0,1fr);align-items:center;gap:15px;margin:12px 0;font-size:15px;color:#70665e}
+#result-screen .taste-meter{position:relative;display:block;height:8px;border-radius:8px;background:linear-gradient(90deg,#e9a698,#f1d9cb);}
+#result-screen .taste-meter i{position:absolute;top:50%;transform:translate(-50%,-50%);width:18px;height:18px;border-radius:50%;background:#792c38;box-shadow:0 0 0 2px #fcf8f2}
+#result-screen .tasting-notes{min-width:0;align-self:stretch;padding-left:24px;border-left:1px solid #d9cbbc}
+#result-screen .tasting-notes h3{margin:0 0 8px;font-size:15px;font-weight:450;color:#76695e}
+#result-screen .tasting-note-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;align-items:start}
+#result-screen .tasting-note{min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;color:#292321;font-size:11px;line-height:1.2}
+#result-screen .note-illustration,#result-screen .tasting-note>img{display:block;width:58px;height:52px;object-fit:contain;background-image:url('/assets/wine-note-illustrations.webp');background-repeat:no-repeat;background-size:300% 300%}
+#result-screen .note-illustration-strawberry{background-position:0 0}
+#result-screen .note-illustration-raspberry{background-position:50% 0}
+#result-screen .note-illustration-flower{background-position:100% 0}
+#result-screen .note-illustration-peach{background-position:0 50%}
+#result-screen .note-illustration-apple{background-position:50% 50%}
+#result-screen .note-illustration-citrus{background-position:100% 50%}
+#result-screen .note-illustration-almond{background-position:0 100%}
+#result-screen .note-illustration-vanilla{background-position:50% 100%}
+#result-screen .note-illustration-berries{background-position:100% 100%}
+#result-screen .rating-combo{grid-column:1/-1;display:block;margin:0;padding:10px 0 0;border-top:1px solid #e6ddd2;border-radius:0;background:none}
+#result-screen .user-rating{display:flex;flex-direction:row;justify-content:space-between;align-items:center;gap:8px}
+#result-screen .user-rating-cta{margin:0;padding:0;background:none;text-align:left;font-size:11px;color:#91877f}
+#result-screen .rating-option{width:34px;height:38px}
+#result-screen .rating-option .rating-icons,#result-screen .rating-option .rating-icon-glass,#result-screen .rating-option .rating-icon-wine{width:25px;height:30px}
+#result-screen .wine-facts{grid-column:auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0;padding:0;border:0}
+#result-screen .wine-fact{min-width:0;min-height:88px;display:flex;align-items:flex-start;gap:11px;padding:14px;border:0;border-radius:19px;background:#fffdfbc9}
+#result-screen .wine-fact-icon{width:38px;height:38px;flex:none;display:grid;place-items:center;border-radius:50%;background:#f8ede6;color:#812c38;font-size:22px}
+#result-screen .wine-fact-icon svg{width:20px;height:20px;stroke-width:2}
+#result-screen .wine-fact>div{min-width:0;display:grid;gap:3px}
+#result-screen .wine-fact strong{font-size:19px;font-weight:550;line-height:1.2;overflow-wrap:anywhere}
+#result-screen .wine-fact small{font-size:12px;line-height:1.3;color:#8b8179}
+#result-screen .result-actions{margin:0;gap:12px}
+#result-screen .result-actions .button{min-height:54px;font-size:15px;border-radius:20px;background:transparent;color:#792c38;border-color:#d8cabc}
+#result-screen .result-actions .button:hover{background:#f6f1e8}
+#result-screen .result-actions .button.primary,#result-screen .result-actions #compare-wine.is-selected{background:#792c38;color:#fff;border-color:#792c38}
+#result-screen .result-actions .button svg,#result-screen .result-actions .icon-compare{width:21px;height:21px}
+#result-screen .fit-card{margin:0}
+#result-screen .dish-pairings{margin:0;padding:23px;border-radius:24px}
+#result-screen .dish-pairings-heading{margin-bottom:14px}
+#result-screen .dish-pairings-heading h2{font-size:26px}
+#result-screen .wine-description{margin:0;padding:18px 20px;border:1px solid #e9e0d6;border-radius:20px;background:#fffdfb}
+#result-screen .wine-description summary{cursor:pointer;font:400 21px/1.2 Georgia,serif;color:#302825}
+#result-screen .wine-description .wine-summary{margin:12px 0 0;font-size:14px;line-height:1.7;color:#716861}
+#result-screen .wine-description[open]{padding-bottom:22px}
+#result-screen .after-search{margin-top:19px}
+@media(max-width:720px){
+  #result-screen .wine-hero{gap:10px;padding:9px;border-radius:22px}
+  #result-screen .wine-main{grid-template-columns:minmax(0,.82fr) minmax(0,1fr);min-height:360px;column-gap:7px}
+  #result-screen .wine-portrait{min-height:360px;margin:-9px 0 -3px -9px;border-radius:18px 0 0 0}
+  #result-screen .wine-portrait .wine-vineyard-backdrop{object-position:35% center}
+  #result-screen .wine-portrait::after{background:linear-gradient(90deg,#f6f1e800 25%,#f6f1e8 100%),linear-gradient(0deg,#f6f1e8 0%,#f6f1e800 20%)}
+  #result-screen .wine-portrait .wine-bottle{height:111%;max-width:140%}
+  #result-screen .wine-details{padding:25px 10px 12px 0}
+  #result-screen .wine-details .eyebrow{margin:0 28px 8px 0;font-size:9px;letter-spacing:.9px}
+  #result-screen .wine-details h1{font-size:clamp(24px,6vw,31px);letter-spacing:-.7px}
+  #result-screen .wine-category{margin:9px 0 13px;font-size:12px;line-height:1.35}
+  #result-screen .public-rating{margin-bottom:0}
+  #result-screen .public-rating-badge{gap:5px;flex-wrap:wrap}
+  #result-screen .public-rating-badge .rating-star{font-size:28px}
+  #result-screen .public-rating-badge strong{font-size:32px}
+  #result-screen .public-rating-badge .rating-copy{width:100%;margin:0 0 0 2px}
+  #result-screen .public-rating-badge .rating-copy small{font-size:10px}
+  #result-screen .portrait-save{top:7px;right:7px;width:34px;height:34px}
+  #result-screen .portrait-save svg{width:17px;height:17px}
+  #result-screen .result-taste{grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:9px 10px;padding:13px 11px;border-radius:18px}
+  #result-screen .taste-profile-heading{align-items:flex-start;flex-direction:column;gap:2px;margin-bottom:8px}
+  #result-screen .taste-profile-heading h2{font-size:15px}
+  #result-screen .taste-profile-heading span{font-size:8px}
+  #result-screen .taste-row{grid-template-columns:1fr;gap:3px;margin:8px 0;font-size:10px}
+  #result-screen .taste-meter{height:6px}
+  #result-screen .taste-meter i{width:13px;height:13px}
+  #result-screen .tasting-notes{padding-left:9px}
+  #result-screen .tasting-notes h3{font-size:11px;margin:2px 0 5px}
+  #result-screen .tasting-note-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 2px}
+  #result-screen .tasting-note{font-size:9px;gap:1px}
+  #result-screen .note-illustration,#result-screen .tasting-note>img{width:38px;height:34px}
+  #result-screen .rating-combo{padding-top:6px}
+  #result-screen .user-rating-cta{font-size:9px}
+  #result-screen .rating-option{width:25px;height:32px;padding:1px}
+  #result-screen .rating-option .rating-icons,#result-screen .rating-option .rating-icon-glass,#result-screen .rating-option .rating-icon-wine{width:20px;height:25px}
+  #result-screen .wine-facts{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  #result-screen .wine-fact{min-height:86px;flex-direction:column;gap:6px;padding:9px;border-radius:14px}
+  #result-screen .wine-fact-icon{width:28px;height:28px;font-size:17px}
+  #result-screen .wine-fact-icon svg{width:16px;height:16px}
+  #result-screen .wine-fact strong{font-size:13px}
+  #result-screen .wine-fact small{font-size:9px}
+  #result-screen .result-actions{gap:7px}
+  #result-screen .result-actions .button{min-height:46px;padding:8px 6px;font-size:11px;gap:5px;border-radius:14px}
+  #result-screen .result-actions .button svg,#result-screen .result-actions .icon-compare{width:17px;height:17px}
+  #result-screen .dish-pairings{padding:18px 15px;border-radius:20px}
+  #result-screen .dish-pairings-heading h2{font-size:22px}
+  #result-screen .wine-description{padding:15px}
+  #result-screen .wine-description summary{font-size:18px}
+}
+#result-screen .wine-category{margin-bottom:15px}
+#result-screen .wine-metadata{display:grid;gap:0;margin-top:17px;padding:4px 14px;border-radius:18px;background:#fffdfbcf}
+#result-screen .wine-meta-item{min-width:0;display:grid;grid-template-columns:30px 46px minmax(0,1fr);gap:9px;align-items:center;padding:8px 0}
+#result-screen .wine-meta-item+.wine-meta-item{border-top:1px solid #eee6dd}
+#result-screen .wine-meta-icon{display:grid;place-items:center;width:28px;height:28px;color:#843541}
+#result-screen .wine-meta-icon svg{width:21px;height:21px;stroke-width:2}
+#result-screen .wine-meta-item>img{display:block;width:46px;height:46px;object-fit:cover;border-radius:13px}
+#result-screen .wine-meta-item>div{min-width:0;display:grid;gap:1px}
+#result-screen .wine-meta-item small{font-size:11px;color:#8b8179}
+#result-screen .wine-meta-item strong{font-size:15px;font-weight:500;line-height:1.25;overflow-wrap:anywhere}
+#result-screen .wine-facts{width:min(100%,840px);grid-template-columns:repeat(auto-fit,minmax(220px,1fr));justify-self:center}
+#result-screen .wine-fact{align-items:center}
+@media(max-width:720px){
+  #result-screen .wine-category{margin-bottom:10px;font-size:11px}
+  #result-screen .wine-metadata{margin-top:10px;padding:3px 8px;border-radius:12px}
+  #result-screen .wine-meta-item{grid-template-columns:19px 31px minmax(0,1fr);gap:5px;padding:6px 0}
+  #result-screen .wine-meta-icon{width:19px;height:19px}
+  #result-screen .wine-meta-icon svg{width:16px;height:16px}
+  #result-screen .wine-meta-item>img{width:31px;height:31px;border-radius:8px}
+  #result-screen .wine-meta-item small{font-size:8px}
+  #result-screen .wine-meta-item strong{font-size:10px;line-height:1.15}
+  #result-screen .wine-facts{width:100%;grid-template-columns:repeat(auto-fit,minmax(125px,1fr))}
+}
+#result-screen:focus{outline:none}
+#result-screen .tasting-note>img{background:none}
+
+/* The scanner uses the supplied wine-shelf scene as its live viewfinder backdrop. */
+#scanner-screen .viewfinder{background:#4b3028}
+#scanner-screen .scanner-shelf-background{position:absolute;inset:0;z-index:0;width:100%;max-width:none;height:100%;top:0;left:0;transform:none;object-fit:cover;object-position:center 50%;mix-blend-mode:normal;filter:none}
+#scanner-screen .scan-frame{width:29%;height:66%;top:17%}
+#scanner-screen .recent-scans{max-width:920px;margin:34px auto 0}
+#scanner-screen .recent-scans-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:13px}
+#scanner-screen .recent-scans-heading .eyebrow{margin:0 0 4px;font-size:9px;letter-spacing:1.5px}
+#scanner-screen .recent-scans-heading h2{margin:0;font:400 29px/1.15 Georgia,serif;letter-spacing:-.5px}
+#scanner-screen .recent-scans-heading>span{padding-bottom:3px;color:var(--muted);font-size:12px}
+#scanner-screen .recent-scans-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+#scanner-screen .recent-scan-card{min-width:0;min-height:130px;display:grid;grid-template-columns:66px minmax(0,1fr);gap:12px;align-items:center;padding:12px;border:1px solid #e9e1d7;border-radius:18px;background:linear-gradient(135deg,#faf7f1,#f4eee5);text-align:left;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+#scanner-screen .recent-scan-card:hover{transform:translateY(-2px);border-color:#cdbda9;box-shadow:0 8px 22px #48312210}
+#scanner-screen .recent-scan-card>img,#scanner-screen .recent-scan-image-placeholder{display:grid;width:66px;height:102px;place-items:center;object-fit:contain;border-radius:12px;background:#fffdf9;color:#9a8d7d;font-size:10px}
+#scanner-screen .recent-scan-copy{min-width:0;display:grid;gap:3px}
+#scanner-screen .recent-scan-copy small,#scanner-screen .recent-scan-category{overflow:hidden;color:#847c73;font-size:10px;line-height:1.3;text-overflow:ellipsis;white-space:nowrap}
+#scanner-screen .recent-scan-copy strong{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;font:400 17px/1.15 Georgia,serif;color:#302825}
+#scanner-screen .recent-scan-rating{margin-top:4px;color:#a67e27;font-size:13px;font-weight:650}
+#scanner-screen .recent-scan-rating small{margin-left:4px;color:#89827a;font-size:9px;font-weight:400}
+#scanner-screen .recent-rating-missing{color:#89827a;font-size:10px;font-weight:400}
+@media(max-width:720px){
+  #scanner-screen .scan-frame{width:34%;height:60%;top:18%}
+  #scanner-screen .recent-scans{margin:27px 0 0}
+  #scanner-screen .recent-scans-heading{margin-bottom:10px}
+  #scanner-screen .recent-scans-heading h2{font-size:23px}
+  #scanner-screen .recent-scans-heading>span{font-size:10px}
+  #scanner-screen .recent-scans-list{gap:6px}
+  #scanner-screen .recent-scan-card{grid-template-columns:1fr;grid-template-rows:72px auto;gap:7px;min-height:0;padding:8px;border-radius:13px}
+  #scanner-screen .recent-scan-card>img,#scanner-screen .recent-scan-image-placeholder{width:100%;height:72px;border-radius:8px}
+  #scanner-screen .recent-scan-copy{gap:2px}
+  #scanner-screen .recent-scan-copy small,#scanner-screen .recent-scan-category{font-size:8px}
+  #scanner-screen .recent-scan-copy strong{font-size:12px;line-height:1.15}
+  #scanner-screen .recent-scan-rating{font-size:11px}
+  #scanner-screen .recent-scan-rating small{font-size:7px}
+  #scanner-screen .recent-rating-missing{font-size:8px}
+}
