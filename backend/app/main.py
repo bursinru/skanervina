@@ -86,12 +86,14 @@ recognizer = Recognizer(catalog, settings) if catalog else None
 def healthz() -> Dict[str, Any]:
     database_ok = True
     indexed = 0
+    indexed_secondary = 0
     if os.getenv('DATABASE_URL'):
         try:
             from .database import connect
-            from .vision import MODEL_ID
+            from .vision import MODEL_ID, SECONDARY_MODEL_ID
             with connect() as db:
                 indexed = db.execute('SELECT count(*) AS n FROM wine_embeddings WHERE model = %s', (MODEL_ID,)).fetchone()['n']
+                indexed_secondary = db.execute('SELECT count(*) AS n FROM wine_embeddings WHERE model = %s', (SECONDARY_MODEL_ID,)).fetchone()['n']
         except Exception:
             database_ok = False
     cv_required = os.getenv('CV_ENABLED', 'false').lower() == 'true'
@@ -109,6 +111,8 @@ def healthz() -> Dict[str, Any]:
         "visual_search": recognizer.visual_status if recognizer else "unavailable",
         "cv_device": recognizer.visual.encoder.device if recognizer and recognizer.visual else None,
         "indexed_images": indexed,
+        "indexed_images_384": indexed_secondary,
+        "secondary_model": bool(recognizer and getattr(recognizer.visual, 'secondary_ready', False)),
     }
 
 

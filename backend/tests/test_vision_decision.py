@@ -41,6 +41,18 @@ class VisualDecisionTests(unittest.TestCase):
         Image.new('RGB', (50, 50), 'white').save(output, format='PNG')
         self.photo = output.getvalue()
 
+    def test_combined_mode_uses_fused_search_when_secondary_encoder_ready(self):
+        self.recognizer.visual.secondary_ready = True
+        self.recognizer.visual.search_combined.return_value = [
+            {'slug': 'b', 'score': .80, 'full_score': .70, 'crop_score': .70, 'primary_score': .70, 'secondary_score': .90},
+            {'slug': 'a', 'score': .76, 'full_score': .79, 'crop_score': .79, 'primary_score': .79, 'secondary_score': .73},
+        ]
+        result = self.recognizer.recognize(self.photo)
+        self.recognizer.visual.search.assert_not_called()
+        # The 224 leader must not be locked above the fused ranking.
+        self.assertEqual(result['slug'], 'b')
+        self.assertEqual(result['ranking']['top5'][0]['secondary_score'], .90)
+
     def test_match_from_seventy_five_percent(self):
         self.recognizer.visual.search.return_value = [{'slug': 'a', 'score': .76}, {'slug': 'b', 'score': .70}]
         result = self.recognizer.recognize(self.photo)
@@ -274,6 +286,24 @@ class ExtraGalleryTests(unittest.TestCase):
         self.assertEqual(full, 0.71)
         self.assertEqual(crop, 0.88)
         self.assertEqual(winner, 'crop')
+
+    def test_fuse_scores_averages_best_row_of_each_model(self):
+        from app.vision import fuse_scores
+        fused = fuse_scores(
+            [{'slug': 'a', 'image_hash': 'a1', 'score': 0.90}, {'slug': 'a', 'image_hash': 'a2', 'score': 0.70},
+             {'slug': 'b', 'image_hash': 'b1', 'score': 0.86}],
+            [{'slug': 'a', 'image_hash': 'a1', 'score': 0.60}, {'slug': 'b', 'image_hash': 'b1', 'score': 0.80}],
+        )
+        self.assertEqual([item['slug'] for item in fused], ['b', 'a'])
+        self.assertAlmostEqual(fused[0]['score'], 0.83)
+        self.assertEqual(fused[1]['image_hash'], 'a1')
+        self.assertEqual((fused[1]['primary_score'], fused[1]['secondary_score']), (0.9, 0.6))
+
+    def test_fuse_scores_keeps_wine_missing_from_one_index(self):
+        from app.vision import fuse_scores
+        fused = fuse_scores([], [{'slug': 'a', 'image_hash': 'a1', 'score': 0.8}])
+        self.assertAlmostEqual(fused[0]['score'], 0.8)
+        self.assertIsNone(fused[0]['image_hash'])
 
 
 class RerankTests(unittest.TestCase):

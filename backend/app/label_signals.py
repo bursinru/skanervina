@@ -142,6 +142,9 @@ def ocr_delta(text: str, wine: Optional[CatalogWine], reference_text: str = "") 
 
 
 def _visual_score(item: Mapping[str, Any]) -> float:
+    if item.get("secondary_score") is not None:
+        # Fused 224/384 score: a single 224 view must not overrule it.
+        return float(item.get("siglip") or item.get("score") or 0.0)
     scores = []
     for key in ("crop_score", "full_score", "siglip", "score"):
         value = item.get(key)
@@ -200,6 +203,8 @@ def blend_candidates(
                 "full_score": item.get("full_score"),
                 "crop_score": item.get("crop_score"),
                 "best_view": item.get("best_view"),
+                "primary_score": item.get("primary_score"),
+                "secondary_score": item.get("secondary_score"),
             }
         )
     blended.sort(key=lambda row: row["score"], reverse=True)

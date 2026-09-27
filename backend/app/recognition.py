@@ -314,9 +314,12 @@ class Recognizer:
 
         if self.visual:
             visual_started = perf_counter()
-            candidates = self.visual.search(work_image, limit=8)
-            if mode == "combined" and work_image is not search_image:
-                candidates = merge_query_views(candidates, self.visual.search(search_image, limit=8), limit=8)
+            if mode == "combined" and getattr(self.visual, 'secondary_ready', False) is True:
+                candidates = self.visual.search_combined(work_image, search_image, limit=8)
+            else:
+                candidates = self.visual.search(work_image, limit=8)
+                if mode == "combined" and work_image is not search_image:
+                    candidates = merge_query_views(candidates, self.visual.search(search_image, limit=8), limit=8)
             visual_ms = (perf_counter() - visual_started) * 1000
             if not candidates:
                 metrics = base_metrics("siglip2+pgvector")
@@ -424,6 +427,8 @@ class Recognizer:
                     "full_score": item.get("full_score"),
                     "crop_score": item.get("crop_score"),
                     "best_view": item.get("best_view"),
+                    "primary_score": item.get("primary_score"),
+                    "secondary_score": item.get("secondary_score"),
                 }
                 for item in ranked[:5]
             ]

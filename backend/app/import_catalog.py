@@ -145,14 +145,17 @@ def main():
         raise ValueError('--extra-images must be a directory')
     if not extra_root and (not args.images or not args.images.is_dir()):
         raise ValueError('--images must point to the local catalog uploads directory')
-    from .vision import ImageEncoder, MODEL_ID
-    print(json.dumps({'loading_encoder': True}), flush=True)
-    encoder = ImageEncoder()
-    print(json.dumps({'encoder_ready': True, 'model': MODEL_ID}), flush=True)
+    from .vision import MODEL_ID, MODEL_REVISION, SECONDARY_MODEL_ID, SECONDARY_MODEL_REVISION, ImageEncoder, indexed_models
+    revisions = {MODEL_ID: MODEL_REVISION, SECONDARY_MODEL_ID: SECONDARY_MODEL_REVISION}
+    encoders = {}
+    for model in indexed_models():
+        print(json.dumps({'loading_encoder': model}), flush=True)
+        encoders[model] = ImageEncoder(model, revisions[model])
+    print(json.dumps({'encoder_ready': True, 'models': list(encoders)}), flush=True)
     pending, skipped, missing = [], 0, []
     root = args.images.resolve() if args.images and args.images.is_dir() else extra_root
     with connect() as db:
-        existing = {(r['slug'], r['image_hash']): r for r in db.execute('SELECT slug, image_hash, model FROM wine_embeddings')}
+        existing = {(r['slug'], r['model'], r['image_hash']) for r in db.execute('SELECT slug, model, image_hash FROM wine_embeddings')}
     scanned = 0
     for wine in wines:
         scanned += 1
@@ -178,47 +181,54 @@ def main():
             views = [('full', digest)]
             if args.crops:
                 views.append(('crop', crop_view_digest(digest)))
+            # One work item per file: the crop detector is slow and runs once for all models.
+            needed = []
             for kind, view_digest in views:
-                previous = existing.get((wine.slug, view_digest), {})
-                if previous.get('model') == MODEL_ID and not (args.force_crops and kind == 'crop'):
-                    skipped += 1
-                    continue
-                pending.append((wine.slug, path, view_digest, kind))
-    print(json.dumps({'pending': len(pending), 'skipped': skipped, 'missing': len(missing), 'force_crops': args.force_crops}), flush=True)
-    processed, failed = 0, []
-    for offset in range(0, len(pending), args.batch_size):
-        batch, images = [], []
-        for item in pending[offset:offset + args.batch_size]:
-            try:
-                with Image.open(item[1]) as im:
-                    rgb = label_rgb(im)
-                if item[3] == 'crop':
-                    cropped = label_crop_if_useful(rgb)
-                    if cropped is None:
+                for model in encoders:
+                    if (wine.slug, model, view_digest) in existing and not (args.force_crops and kind == 'crop'):
                         skipped += 1
                         continue
-                    rgb = cropped
-                    if args.save_crops:
+                    needed.append((kind, view_digest, model))
+            if needed:
+                pending.append((wine.slug, path, needed))
+    print(json.dumps({'pending_files': len(pending), 'skipped': skipped, 'missing': len(missing), 'force_crops': args.force_crops}), flush=True)
+    processed, failed = 0, []
+    for offset in range(0, len(pending), args.batch_size):
+        batches = {model: ([], []) for model in encoders}
+        for slug, path, needed in pending[offset:offset + args.batch_size]:
+            try:
+                with Image.open(path) as im:
+                    rgb = label_rgb(im)
+                cropped = None
+                if any(kind == 'crop' for kind, _, _ in needed):
+                    cropped = label_crop_if_useful(rgb)
+                    if cropped is not None and args.save_crops:
                         try:
                             args.save_crops.mkdir(parents=True, exist_ok=True)
-                            rgb.convert('RGB').save(args.save_crops / f'{item[0]}.jpg', quality=92)
+                            cropped.convert('RGB').save(args.save_crops / f'{slug}.jpg', quality=92)
                         except Exception as exc:
-                            print(json.dumps({'save_failed': item[0], 'error': str(exc)[:200]}), flush=True)
-                images.append(rgb)
-                batch.append(item)
+                            print(json.dumps({'save_failed': slug, 'error': str(exc)[:200]}), flush=True)
+                for kind, view_digest, model in needed:
+                    image = rgb if kind == 'full' else cropped
+                    if image is None:
+                        skipped += 1
+                        continue
+                    batches[model][0].append(image)
+                    batches[model][1].append((slug, view_digest))
             except Exception as exc:
-                failed.append(item[0])
-                print(json.dumps({'failed': item[0], 'kind': item[3], 'error': str(exc)[:200]}), flush=True)
-        if not images:
-            continue
-        vectors = encoder.encode(images)
-        with connect() as db:
-            for (slug, _, digest, _), vector in zip(batch, vectors):
-                db.execute('''INSERT INTO wine_embeddings (slug, model, image_hash, embedding) VALUES (%s,%s,%s,%s::vector)
-                    ON CONFLICT (slug, image_hash) DO UPDATE SET model=excluded.model, embedding=excluded.embedding, updated_at=now()''',
-                           (slug, MODEL_ID, digest, str(vector)))
-        processed += len(batch)
-        print(json.dumps({'indexed': processed, 'remaining': len(pending) - offset - len(batch)}), flush=True)
+                failed.append(slug)
+                print(json.dumps({'failed': slug, 'error': str(exc)[:200]}), flush=True)
+        for model, (images, keys) in batches.items():
+            if not images:
+                continue
+            vectors = encoders[model].encode(images)
+            with connect() as db:
+                for (slug, digest), vector in zip(keys, vectors):
+                    db.execute('''INSERT INTO wine_embeddings (slug, model, image_hash, embedding) VALUES (%s,%s,%s,%s::vector)
+                        ON CONFLICT (slug, model, image_hash) DO UPDATE SET embedding=excluded.embedding, updated_at=now()''',
+                               (slug, model, digest, str(vector)))
+            processed += len(keys)
+        print(json.dumps({'indexed': processed, 'remaining_files': max(0, len(pending) - offset - args.batch_size)}), flush=True)
     report = {'indexed': processed, 'unchanged': skipped, 'missing': missing, 'failed': failed}
     report_path = Path(__file__).resolve().parents[1] / 'data' / 'index-report.json'
     report_path.parent.mkdir(parents=True, exist_ok=True)
