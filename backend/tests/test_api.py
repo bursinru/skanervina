@@ -69,6 +69,20 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(items)
         self.assertEqual(self.client.get('/v1/catalog/' + items[0]['slug']).status_code, 200)
 
+    def test_public_feed_lists_matched_wines_without_duplicates(self):
+        self.assertEqual(self.client.get('/v1/scans/recent').json()['items'], [])
+        matched = {'status': 'matched', 'slug': 'fanagoria-test', 'ranking': {}, 'recognition': {}}
+        photo = ('label.jpg', b'x', 'image/jpeg')
+        with patch('app.main.recognize_upload', AsyncMock(return_value=matched)):
+            self.client.post('/v1/recognize', files={'image': photo})
+            self.client.post('/v1/recognize', files={'image': photo})
+        with patch('app.main.recognize_upload', AsyncMock(return_value={**matched, 'status': 'unknown', 'slug': None})):
+            self.client.post('/v1/recognize', files={'image': photo})
+        storage.record_scan('removed-from-catalog')
+        items = self.client.get('/v1/scans/recent').json()['items']
+        self.assertEqual([item['slug'] for item in items], ['fanagoria-test'])
+        self.assertIn('scanned_at', items[0])
+
     def test_web_can_request_bottle_boxes_and_pass_a_selected_box(self):
         output = BytesIO()
         Image.new('RGB', (40, 60), 'black').save(output, format='PNG')

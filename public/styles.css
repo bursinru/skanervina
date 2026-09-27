@@ -808,3 +808,107 @@ body{background:#fffdfb}
   #scanner-screen .recent-scan-rating small{font-size:7px}
   #scanner-screen .recent-rating-missing{font-size:8px}
 }
+
+/* Mobile polish: nothing hidden under the compare tray, readable type, full-width wine metadata. */
+body.has-compare-tray{padding-bottom:96px}
+#compare-close{width:44px;height:44px;border:0;background:var(--cream);box-shadow:none;color:var(--ink)}
+#compare-close svg{width:22px;height:22px;stroke-width:1.9}
+.compare-list,.compare-metric-row{grid-template-columns:repeat(var(--compare-columns,3),minmax(0,1fr))}
+.compare-art img{position:absolute;left:50%;bottom:5%;width:auto;height:88%;max-width:86%;transform:translateX(-50%)}
+.compare-metric-label svg{width:19px;height:19px;flex:none;color:#853340;stroke-width:1.9}
+.compare-metric-label span{font-size:inherit;line-height:inherit;color:inherit;font-weight:inherit}
+.alt-card .wine-thumb{display:block;width:46px;height:86px;overflow:hidden;isolation:isolate;border-radius:8px;background:#f4eee5}
+.alt-card .wine-thumb img,.alt-card .wine-thumb .dish-placeholder{display:block;width:100%;height:100%;border-radius:0;background:transparent}
+.alt-card .wine-thumb .dish-placeholder{display:grid}
+.alt-card .wine-thumb img{mix-blend-mode:multiply}
+.saved-item img,#scanner-screen .recent-scan-card>img,.dish-card img{background:transparent;mix-blend-mode:multiply}
+.after-search .sommelier-heading,#result-screen .sommelier-panel{margin-top:30px;padding-top:26px;border-top:1px solid #e6dccf}
+#result-screen .wine-description summary{display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none}
+#result-screen .wine-description summary::-webkit-details-marker{display:none}
+#result-screen .wine-description summary svg{flex:none;width:22px;height:22px;color:var(--wine);transition:transform .2s}
+#result-screen .wine-description[open] summary svg{transform:rotate(180deg)}
+#result-screen .wine-main{grid-template-rows:auto 1fr}
+#result-screen .wine-portrait{grid-row:1/span 2}
+#result-screen .wine-details{grid-column:2;grid-row:1;padding-bottom:0}
+#result-screen .wine-metadata{grid-column:2;grid-row:2;align-self:start;margin:17px 24px 20px 0}
+#result-screen .wine-meta-item:not(.has-image)>div{grid-column:2/-1}
+#scanner-screen .recent-scan-time{margin-top:3px;color:#8b8179;font-size:11px}
+#scanner-screen .public-scans-list{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:720px){
+  body.has-compare-tray{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+  .compare-tray{left:auto;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));width:auto;padding:0;transform:none;border:0;border-radius:28px;background:none;box-shadow:0 10px 28px #4c302b40;backdrop-filter:none}
+  .compare-tray>div{display:none}
+  .compare-tray .button{min-height:52px;padding:0 20px;border-radius:28px;font-size:15px}
+
+  .compare-board{overflow:visible;margin:16px 0 0;padding:0}
+  .compare-list,.compare-metrics{min-width:0}
+  .compare-list,.compare-metric-row{grid-template-columns:repeat(var(--compare-mobile-columns,2),minmax(0,1fr))}
+  .compare-board .is-desktop-only{display:none}
+  .compare-board.is-scrollable{overflow-x:auto;margin:16px -16px 0;padding:0 16px 8px}
+  .compare-board.is-scrollable .compare-list,.compare-board.is-scrollable .compare-metrics{min-width:480px}
+  .compare-card,.compare-add{min-height:0}
+  .compare-art{height:180px}
+  .compare-remove{top:8px;right:8px;width:34px;height:34px}
+  .compare-remove svg{width:17px;height:17px}
+  .compare-card-copy{padding:4px 12px 14px}
+  .compare-card-copy small{font-size:10px}
+  .compare-card-copy h3{min-height:0;font-size:19px}
+  .compare-card-copy p{font-size:12px}
+  .compare-metric-row{min-height:0;gap:6px 8px;padding:10px 12px 12px;border-radius:18px}
+  .compare-metric-label{position:sticky;left:0;justify-self:start;justify-content:flex-start;gap:7px;font-size:13px}
+  .compare-metric-label svg{width:17px;height:17px}
+  .compare-metric-value{font-size:16px}
+  .compare-rating{font-size:20px}
+  .compare-segments i{height:9px}
+  .compare-scroll-hint{margin:12px 0 -6px;font-size:12px}
+
+  #result-screen .wine-main{min-height:0;grid-template-rows:auto auto}
+  #result-screen .wine-portrait{grid-row:1;min-height:320px;margin-bottom:0}
+  #result-screen .wine-details{align-self:center;padding:18px 8px 18px 0}
+  #result-screen .wine-details .eyebrow{font-size:10px}
+  #result-screen .wine-category{font-size:13px}
+  #result-screen .public-rating-badge .rating-copy small{font-size:11px}
+  #result-screen .wine-metadata{grid-column:1/-1;grid-row:2;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);margin:10px 0 0;padding:4px 12px;border-radius:16px}
+  #result-screen .wine-meta-item{grid-template-columns:36px minmax(0,1fr);gap:9px;padding:8px 0}
+  #result-screen .wine-meta-item+.wine-meta-item{border-top:0;border-left:1px solid #eee6dd;padding-left:12px}
+  #result-screen .wine-meta-item.has-image .wine-meta-icon{display:none}
+  #result-screen .wine-meta-item:not(.has-image)>div{grid-column:auto}
+  #result-screen .wine-meta-icon{width:36px;height:36px}
+  #result-screen .wine-meta-icon svg{width:19px;height:19px}
+  #result-screen .wine-meta-item>img{width:36px;height:36px;border-radius:10px}
+  #result-screen .wine-meta-item small{font-size:11px}
+  #result-screen .wine-meta-item strong{font-size:14px;line-height:1.25;overflow-wrap:normal}
+
+  #result-screen .result-taste{grid-template-columns:minmax(0,1fr);gap:14px;padding:16px}
+  #result-screen .taste-profile-heading{flex-direction:row;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 10px;margin-bottom:6px}
+  #result-screen .taste-profile-heading h2{font-size:18px}
+  #result-screen .taste-profile-heading span{font-size:11px}
+  #result-screen .taste-row{grid-template-columns:108px minmax(0,1fr);gap:12px;margin:12px 0;font-size:13px}
+  #result-screen .taste-meter{height:7px}
+  #result-screen .taste-meter i{width:15px;height:15px}
+  #result-screen .tasting-notes{padding:12px 0 0;border-left:0;border-top:1px solid #e6ddd2}
+  #result-screen .tasting-notes h3{margin:0 0 8px;font-size:13px}
+  #result-screen .tasting-note-list{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 4px}
+  #result-screen .tasting-note{gap:3px;font-size:11px}
+  #result-screen .note-illustration,#result-screen .tasting-note>img{width:46px;height:42px}
+  #result-screen .rating-combo{padding-top:10px}
+  #result-screen .user-rating-cta{font-size:12px}
+  #result-screen .rating-option{width:32px;height:36px}
+  #result-screen .rating-option .rating-icons,#result-screen .rating-option .rating-icon-glass,#result-screen .rating-option .rating-icon-wine{width:22px;height:27px}
+  #result-screen .wine-fact strong{font-size:15px}
+  #result-screen .wine-fact small{font-size:11px}
+  #result-screen .result-actions .button{font-size:13px}
+
+  #scanner-screen .recent-scans-list{display:flex;gap:10px;overflow-x:auto;margin:0 -18px;padding:2px 18px 10px;scroll-snap-type:x mandatory;scroll-padding-inline:18px;scrollbar-width:none}
+  #scanner-screen .recent-scans-list::-webkit-scrollbar{display:none}
+  #scanner-screen .recent-scan-card{flex:0 0 148px;grid-template-rows:108px auto;align-items:start;padding:10px;scroll-snap-align:start}
+  #scanner-screen .recent-scan-card>img,#scanner-screen .recent-scan-image-placeholder{height:108px}
+  #scanner-screen .recent-scan-copy small,#scanner-screen .recent-scan-category{font-size:11px}
+  #scanner-screen .recent-scan-copy strong{font-size:15px}
+  #scanner-screen .recent-scan-rating{font-size:13px}
+  #scanner-screen .recent-scan-rating small{font-size:10px}
+  #scanner-screen .recent-rating-missing{font-size:11px}
+  #scanner-screen .recent-scans-heading .eyebrow{font-size:10px}
+  #scanner-screen .recent-scans-heading{flex-direction:column;align-items:flex-start;gap:4px}
+  #scanner-screen .recent-scans-heading>span{padding:0;font-size:12px}
+}

@@ -218,6 +218,8 @@ async def recognize(request: Request, response: Response, image: UploadFile = Fi
     result = await recognize_upload(image, mode, include_candidates, ocr_enabled, compare_slug, parsed_bottle_box)
     response.headers['Cache-Control'] = 'no-store'
     if not token and not debug_request:
+        if result.get('status') == 'matched' and result.get('slug'):
+            await remember_public_scan(result['slug'])
         ranking = dict(result.get('ranking') or {})
         ranking['top5'] = [
             {'slug': item.get('slug'), 'score': item.get('score')}
@@ -234,6 +236,31 @@ async def recognize(request: Request, response: Response, image: UploadFile = Fi
             },
         }
     return result
+
+
+async def remember_public_scan(slug: str) -> None:
+    # The feed is decoration: a storage failure must never fail recognition.
+    try:
+        await run_in_threadpool(storage.record_scan, slug)
+    except Exception:
+        import logging
+        logging.exception('Could not record scan event')
+
+
+@app.get("/v1/scans/recent")
+def recent_public_scans(response: Response, limit: int = 8) -> Dict[str, Any]:
+    service = require_service()
+    limit = max(1, min(limit, 12))
+    items = []
+    # Over-fetch: slugs removed from the catalog since the scan are skipped.
+    for slug, scanned_at in storage.recent_scans(limit * 2):
+        wine = service.catalog.get(slug)
+        if wine:
+            items.append({**wine.to_card(), 'scanned_at': scanned_at})
+        if len(items) == limit:
+            break
+    response.headers['Cache-Control'] = 'public, max-age=30'
+    return {'items': items}
 
 
 @app.post("/v1/bottles")
@@ -370,7 +397,7 @@ PUBLIC = Path(os.getenv("STATIC_DIR", str(Path(__file__).resolve().parents[2] / 
 def config():
     import json
     return Response("window.SCANNER_CONFIG = " + json.dumps({
-        "recognitionEndpoint": "/v1/recognize", "bottleDetectionEndpoint": "/v1/bottles", "profileEndpoint": "/v1/profile",
+        "recognitionEndpoint": "/v1/recognize", "bottleDetectionEndpoint": "/v1/bottles", "profileEndpoint": "/v1/profile", "recentScansEndpoint": "/v1/scans/recent",
         "bottleDetectionEnabled": os.getenv('CV_ENABLED', 'false').lower() == 'true',
         "imageBaseUrl": settings.image_base_url,
     }) + ";", media_type="text/javascript")
