@@ -141,6 +141,13 @@ const tasteDimensions = [
   { key: 'aromaticity', label: 'Ароматичность' },
   { key: 'body', label: 'Тело' }
 ];
+// What the wine card and the comparison show, in this order.
+const profileDimensions = [
+  { key: 'sweetness', label: 'Сладость', icon: 'drop' },
+  { key: 'acidity', label: 'Кислотность', icon: 'citrus' },
+  { key: 'body', label: 'Насыщенность', icon: 'layers' }
+];
+const profileLevelWords = ['', 'Низкая', 'Ниже средней', 'Средняя', 'Выше средней', 'Высокая'];
 const clampTaste = value => Math.max(1, Math.min(5, Math.round(Number(value) || 1)));
 const tastingNoteRules = [
   [/клубник|землян/, 'Клубника'],
@@ -194,17 +201,20 @@ const wineColorSwatches = [
   [/фиолет|пурпур/, '#76224b', '#45102c'], [/гранат/, '#8f2130', '#58101d'], [/рубин|красн/, '#a92b40', '#6d1426']
 ];
 const wineStyleSwatches = { 'Белое': ['#fcf8dc', '#efe8bd'], 'Оранжевое': ['#f6c08d', '#e38a47'], 'Розовое': ['#fbd5d8', '#ee9fae'], 'Красное': ['#a92b40', '#6d1426'] };
-function wineColorSwatch(wine) {
+function wineColorTones(wine) {
   // Orange wines are described as "золотисто-янтарный"; the style reads better.
-  if (inferWineColor(wine) === 'Оранжевое') return `linear-gradient(160deg, ${wineStyleSwatches['Оранжевое'].join(' 0%, ')} 100%)`;
+  if (inferWineColor(wine) === 'Оранжевое') return wineStyleSwatches['Оранжевое'];
   const text = normalizeCatalogValue(wine.color);
   let best = null;
   for (const [pattern, from, to] of wineColorSwatches) {
     const index = text.search(pattern);
     if (index >= 0 && (!best || index < best.index)) best = { index, from, to };
   }
-  const [from, to] = best ? [best.from, best.to] : (wineStyleSwatches[inferWineColor(wine)] || []);
-  return from ? `linear-gradient(160deg, ${from} 0%, ${to} 100%)` : '';
+  return best ? [best.from, best.to] : (wineStyleSwatches[inferWineColor(wine)] || null);
+}
+function wineColorSwatch(wine) {
+  const tones = wineColorTones(wine);
+  return tones ? `linear-gradient(160deg, ${tones[0]} 0%, ${tones[1]} 100%)` : '';
 }
 // "Белое · Сладкое": the same wording on the wine card and in the comparison.
 function wineStyleTags(wine) {
@@ -422,36 +432,88 @@ function renderCompareTray() {
   headerButton.hidden = comparison.length === 0;
   headerButton.setAttribute('aria-label', `Сравнение: ${comparison.length}`);
 }
+function wineGrapeList(wine) {
+  return Array.isArray(wine.grapes) ? wine.grapes.filter(Boolean) : (wine.grapes ? [wine.grapes] : []);
+}
+function joinRussian(words) {
+  return words.length > 1 ? `${words.slice(0, -1).join(', ')} и ${words.at(-1)}` : words.join('');
+}
+// "Слаще и легче. В аромате — персик и белые цветы." Traits are relative to the other wines.
+function comparisonSummary(wine, others) {
+  const own = deriveTasteProfile(wine);
+  const rivals = others.map(deriveTasteProfile);
+  const phrases = { sweetness: ['слаще', 'суше'], acidity: ['кислотнее', 'мягче'], body: ['насыщеннее', 'легче'] };
+  const traits = [];
+  for (const { key } of profileDimensions) {
+    if (rivals.every(other => own[key] > other[key])) traits.push(phrases[key][0]);
+    else if (rivals.every(other => own[key] < other[key])) traits.push(phrases[key][1]);
+  }
+  const rating = Number(wine.public_rating) || 0;
+  if (rating && others.every(other => rating - (Number(other.public_rating) || 0) >= 0.2)) traits.push('с более высоким рейтингом');
+  const notes = extractAromaNotes(wine).slice(0, 2).map(note => note.toLocaleLowerCase('ru-RU'));
+  const lead = traits.length ? joinRussian(traits) : 'близко к остальным по вкусу';
+  return `${lead.replace(/^./, c => c.toUpperCase())}.${notes.length ? ` В аромате — ${joinRussian(notes)}.` : ''}`;
+}
+function compareGlass(wine) {
+  const tone = (wineColorTones(wine) || ['#e9dccb', '#c9b59c'])[1];
+  return `<svg class="compare-glass" viewBox="0 0 32 40" aria-hidden="true"><path d="M8.4 12h15.2a7.6 7.6 0 0 1-15.2 0Z" fill="${tone}" stroke="none"/><path d="M8 3h16l1.2 10.2a9.2 9.2 0 0 1-18.4 0Z"/><path d="M16 22.4V36M10 37h12"/></svg>`;
+}
 function renderCompareDialog() {
   const list = $('compare-list');
   if (!list) return;
-  const metricRows = [
-    { label: 'Рейтинг', symbol: 'star', value: wine => { const value = Number(wine.public_rating); return Number.isFinite(value) && value > 0 ? `<span class="compare-rating">${value.toFixed(1)} <span aria-hidden="true">★</span></span>` : '—'; } },
-    ...tasteDimensions.map(({ key, label }) => ({ label, symbol: { sweetness: 'drop', acidity: 'citrus', aromaticity: 'flower', body: 'layers' }[key], value: wine => `<span class="compare-segments" aria-label="${escape(label)}: ${deriveTasteProfile(wine)[key]} из 5">${Array.from({ length: 5 }, (_, index) => `<i class="${index < deriveTasteProfile(wine)[key] ? 'is-filled' : ''}"></i>`).join('')}</span>` })),
-    { label: 'Крепость', symbol: 'percent', value: wine => escape(wine.alcohol || '—') },
-    { label: 'Температура подачи', symbol: 'temperature', value: wine => escape(wine.temperature || '—') },
-    { label: 'С чем сочетать', symbol: 'utensils', value: wine => { const dishes = Array.isArray(wine.dishes) ? wine.dishes.filter(Boolean).slice(0, 2) : []; return dishes.length ? escape(dishes.join(' · ')) : '—'; } }
-  ];
-  // One "add" slot at most. On phones it is kept only next to a single wine,
-  // so two wines fit side by side and only three need a horizontal scroll.
+  // One "add" slot at most. On phones it is kept only next to a single wine.
   const count = comparison.length;
   const columns = Math.min(3, count + 1);
-  const mobileColumns = count === 1 ? 2 : Math.max(count, 1);
   const board = $('compare-board');
   board.style.setProperty('--compare-columns', columns);
-  board.style.setProperty('--compare-mobile-columns', mobileColumns);
-  board.classList.toggle('is-scrollable', mobileColumns > 2);
-  $('compare-scroll-hint').hidden = mobileColumns <= 2;
+  board.style.setProperty('--compare-mobile-columns', count === 1 ? 2 : Math.max(count, 1));
   const addSlotClass = count === 2 ? ' is-desktop-only' : '';
   list.innerHTML = Array.from({ length: columns }, (_, index) => {
     const wine = comparison[index];
-    if (!wine) return `<button class="compare-add${addSlotClass}" type="button" aria-label="Добавить вино для сравнения"><span class="compare-add-plus">+</span><strong>Добавить вино</strong><small>Можно сравнить<br>до трёх бутылок</small></button>`;
+    if (!wine) return `<button class="compare-add${addSlotClass}" type="button" aria-label="Добавить вино для сравнения"><span class="compare-add-plus">+</span><strong>Добавить вино</strong><small>Можно сравнить до трёх бутылок</small></button>`;
     const image = resolveImageUrl(wine.image_url, wine.photo_name || wine.image_name || wine.photoName);
     const backdrop = catalogAsset('region', wine.region);
     const details = [...wineStyleTags(wine), wine.region].filter(Boolean).join(' · ');
     return `<article class="compare-card"><div class="compare-art"${backdrop ? ` style="--compare-backdrop:url('${escape(backdrop)}')"` : ''}>${image ? `<img src="${escape(image)}" alt="${escape(wine.name)}" loading="lazy">` : '<span class="compare-card-placeholder">Фото пока нет</span>'}</div><button class="compare-remove" type="button" data-compare-remove="${index}" aria-label="Убрать ${escape(wine.name)} из сравнения">${icon('x')}</button><div class="compare-card-copy"><small>${escape(wine.winery || 'Вино')}</small><h3>${escape(wine.name)}</h3><p>${escape(details || 'Характеристики уточняются')}</p></div></article>`;
   }).join('');
-  $('compare-metrics').innerHTML = metricRows.map(row => `<div class="compare-metric-row"><div class="compare-metric-label">${icon(row.symbol)}<span>${row.label}</span></div>${Array.from({ length: columns }, (_, index) => comparison[index] ? `<div class="compare-metric-value">${row.value(comparison[index])}</div>` : `<div class="compare-metric-value is-empty${addSlotClass}"></div>`).join('')}</div>`).join('');
+
+  // Cells line up with the cards above, including the empty "add" column.
+  const cells = render => Array.from({ length: columns }, (_, index) => comparison[index]
+    ? `<div class="compare-cell">${render(comparison[index], index)}</div>`
+    : `<div class="compare-cell is-empty${addSlotClass}"></div>`).join('');
+  const row = (label, iconName, body) => `<div class="compare-row"><div class="compare-row-label">${icon(iconName)}<span>${label}</span></div>${body}</div>`;
+  const block = (title, iconName, body, extraClass = '') => `<section class="compare-block${extraClass}"><h3 class="compare-block-title">${iconName ? icon(iconName) : ''}${title}</h3>${body}</section>`;
+  const ratings = comparison.map(wine => Number(wine.public_rating) || 0);
+  const bestRating = Math.max(...ratings);
+  const profiles = comparison.map(deriveTasteProfile);
+  const nameLine = wine => `<span class="compare-wine-name"><i class="compare-dot" style="background:${wineColorSwatch(wine) || '#d8cabc'}"></i><b>${escape(wine.name)}</b></span>`;
+
+  const ratingBlock = block('Рейтинг', 'star', `<div class="compare-cols">${cells((wine, index) => ratings[index]
+    ? `<span class="compare-rating">${ratings[index].toFixed(1)} <span aria-hidden="true">★</span></span>${count > 1 && ratings[index] === bestRating && ratings.filter(value => value === bestRating).length === 1 ? '<em class="compare-best">выше</em>' : ''}`
+    : '<span class="compare-muted">Нет оценки</span>')}</div>`, ' compare-rating-block');
+  const summaryBlock = count > 1 ? block('Чем отличаются', 'sparkles', `<div class="compare-summary-list">${comparison.map((wine, index) => `<article class="compare-summary-item">${compareGlass(wine)}<div><strong>${escape(wine.name)}</strong><p>${escape(comparisonSummary(wine, comparison.filter((_, other) => other !== index)))}</p></div></article>`).join('')}</div>`, ' compare-summary') : '';
+  const tasteBlock = block('Вкусовой профиль', '', profileDimensions.map(({ key, label, icon: iconName }) => {
+    const values = profiles.map(profile => profile[key]);
+    const top = Math.max(...values);
+    const leader = count > 1 && values.filter(value => value === top).length === 1;
+    return row(label, iconName, comparison.map((wine, index) => `<div class="compare-taste-line">${nameLine(wine)}<span class="taste-meter" role="img" aria-label="${escape(wine.name)}: ${escape(label.toLowerCase())} ${values[index]} из 5"><i style="left:${(values[index] - 1) * 25}%"></i></span><span class="compare-taste-word${leader && values[index] === top ? ' is-leading' : ''}">${profileLevelWords[values[index]]}</span></div>`).join(''));
+  }).join(''));
+  const notesBlock = block('Основные ноты', '', `<div class="compare-cols">${cells(wine => {
+    const notes = extractAromaNotes(wine).slice(0, 3);
+    return notes.length ? `<div class="compare-notes">${notes.map(note => `<div class="tasting-note">${tastingNoteIllustration(note)}<span>${escape(note)}</span></div>`).join('')}</div>` : '<span class="compare-muted">Не указаны</span>';
+  })}</div>`);
+  const text = value => value ? escape(value) : '<span class="compare-muted">—</span>';
+  const detailRows = [
+    ['Регион', 'pin', wine => text(wine.region)],
+    ['Сорт винограда', 'grapes', wine => { const grapes = wineGrapeList(wine); return text(grapes.length > 2 ? `${grapes.slice(0, 2).join(', ')} и др.` : grapes.join(', ')); }],
+    ['Цвет', 'wine', wine => { const swatch = wineColorSwatch(wine); const color = String(wine.color || '').replace(/^вино\s+|\.$/gi, '').replace(/^./, c => c.toUpperCase()); return color ? `<span class="compare-color">${swatch ? `<i style="background:${swatch}"></i>` : ''}${escape(color)}</span>` : text(''); }],
+    ['Крепость', 'percent', wine => text(wine.alcohol)],
+    ['Температура подачи', 'temperature', wine => text(wine.temperature)],
+    ['С чем сочетать', 'utensils', wine => { const dishes = Array.isArray(wine.dishes) ? wine.dishes.filter(Boolean).slice(0, 3) : []; return text(dishes.join(' · ')); }]
+  ];
+  const detailsBlock = block('Характеристики', '', detailRows.map(([label, iconName, render]) => row(label, iconName, `<div class="compare-cols">${cells(render)}</div>`)).join(''));
+  $('compare-sections').innerHTML = count ? ratingBlock + summaryBlock + tasteBlock + notesBlock + detailsBlock : '';
+
   document.querySelectorAll('[data-compare-remove]').forEach(button => button.onclick = () => {
     comparison.splice(Number(button.dataset.compareRemove), 1);
     persistComparison();
@@ -1079,11 +1141,7 @@ function showWine(wine, scanMeta = null, options = {}) {
   const categoryTags = wineStyleTags(wine);
   const categoryLine = categoryTags.length ? categoryTags.join(' · ') : String(wine.category || '');
   const ratingCount = russianRatingCount(wine.public_rating_count ?? wine.rating_count ?? wine.ratings_count ?? wine.reviews_count);
-  const profileRows = [
-    { key: 'acidity', label: 'Кислотность' },
-    { key: 'sweetness', label: 'Сладость' },
-    { key: 'body', label: 'Насыщенность' }
-  ];
+  const profileRows = profileDimensions;
   const tastingNotes = aromaNotes.slice(0, 4).map(note => `<div class="tasting-note">${tastingNoteIllustration(note)}<span>${escape(note)}</span></div>`).join('');
   const regionImage = catalogAsset('region', wine.region) || safeImage(wine.region_image_url);
   const grapeImage = grapes.map(grape => catalogAsset('grape', grape)).find(Boolean) || safeImage(wine.grape_image_url);
