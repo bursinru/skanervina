@@ -832,6 +832,8 @@ body.has-compare-tray{padding-bottom:96px}
 #result-screen .wine-details{grid-column:2;grid-row:1;padding-bottom:0}
 #result-screen .wine-metadata{grid-column:2;grid-row:2;align-self:start;margin:17px 24px 20px 0}
 #result-screen .wine-meta-item:not(.has-image)>div{grid-column:2/-1}
+#result-screen .wine-meta-swatch{grid-column:2;display:block;width:46px;height:46px;border-radius:13px}
+#result-screen .wine-meta-item>img,#result-screen .wine-meta-swatch{border:2px solid #fff;box-shadow:0 3px 10px #3b261a26}
 #scanner-screen .recent-scan-time{margin-top:3px;color:#8b8179;font-size:11px}
 #scanner-screen .public-scans-list{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media(max-width:720px){
@@ -868,14 +870,16 @@ body.has-compare-tray{padding-bottom:96px}
   #result-screen .wine-details .eyebrow{font-size:10px}
   #result-screen .wine-category{font-size:13px}
   #result-screen .public-rating-badge .rating-copy small{font-size:11px}
-  #result-screen .wine-metadata{grid-column:1/-1;grid-row:2;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);margin:10px 0 0;padding:4px 12px;border-radius:16px}
-  #result-screen .wine-meta-item{grid-template-columns:36px minmax(0,1fr);gap:9px;padding:8px 0}
-  #result-screen .wine-meta-item+.wine-meta-item{border-top:0;border-left:1px solid #eee6dd;padding-left:12px}
+  #result-screen .wine-metadata{grid-column:1/-1;grid-row:2;margin:10px 0 0;padding:4px 14px;border-radius:16px}
+  #result-screen .wine-meta-item{grid-template-columns:40px minmax(0,1fr);gap:12px;padding:9px 0}
   #result-screen .wine-meta-item.has-image .wine-meta-icon{display:none}
   #result-screen .wine-meta-item:not(.has-image)>div{grid-column:auto}
-  #result-screen .wine-meta-icon{width:36px;height:36px}
+  #result-screen .wine-meta-icon{width:40px;height:40px}
   #result-screen .wine-meta-icon svg{width:19px;height:19px}
-  #result-screen .wine-meta-item>img{width:36px;height:36px;border-radius:10px}
+  #result-screen .wine-meta-item>img,#result-screen .wine-meta-swatch{grid-column:auto;width:40px;height:40px;border-radius:11px}
+  #result-screen .wine-fact{min-height:0;flex-direction:row;align-items:center;gap:10px;padding:12px}
+  #result-screen .wine-fact-icon{width:36px;height:36px}
+  #result-screen .wine-fact-icon svg{width:18px;height:18px}
   #result-screen .wine-meta-item small{font-size:11px}
   #result-screen .wine-meta-item strong{font-size:14px;line-height:1.25;overflow-wrap:normal}
 

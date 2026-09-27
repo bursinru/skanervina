@@ -21,6 +21,19 @@ def tokens(value: object) -> Set[str]:
     return set(normalize(value).split())
 
 
+# Variety photos as the site shows them; rebuild with scripts/scrape_grape_images.py.
+GRAPE_IMAGES = json.loads((Path(__file__).with_name("grape_images.json")).read_text(encoding="utf-8"))
+GRAPE_IMAGE_BASE = "https://api.vino-svoe.ru/v1/img/str-api/176/176/resize"
+
+
+def grape_image_for(grapes: List[str]) -> Optional[str]:
+    for grape in grapes:
+        path = GRAPE_IMAGES.get(grape.strip().lower())
+        if path:
+            return GRAPE_IMAGE_BASE + path
+    return None
+
+
 def split_grapes(value: object) -> List[str]:
     return [item.strip() for item in re.split(r"[,;]", str(value or "")) if item.strip()]
 
@@ -120,7 +133,7 @@ class CatalogWine:
             "quality_rating": self.quality_rating,
             "color": self.color,
             "region_image_url": self.region_image_url,
-            "grape_image_url": self.grape_image_url,
+            "grape_image_url": self.grape_image_url or grape_image_for(self.grapes),
             "temperature": self.temperature,
             "alcohol": self.alcohol,
             "dishes": self.dishes,

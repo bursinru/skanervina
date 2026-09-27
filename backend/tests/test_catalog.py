@@ -1,6 +1,6 @@
 import unittest
 
-from app.catalog import WineCatalog, normalize
+from app.catalog import WineCatalog, grape_image_for, normalize
 
 
 class CatalogTests(unittest.TestCase):
@@ -25,6 +25,12 @@ class CatalogTests(unittest.TestCase):
             ],
             "https://api.vino-svoe.ru/uploads/",
         )
+
+    def test_grape_photo_comes_from_site_variety_index(self):
+        self.assertTrue(grape_image_for(["Белые сорта винограда"]).endswith(".webp"))
+        self.assertIsNone(grape_image_for(["Несуществующий сорт"]))
+        card = WineCatalog.from_rows([{"Slug": "x", "Название вина": "X", "Сорт винограда": "Шардоне"}], "https://example.com/").get("x").to_card()
+        self.assertIn("/uploads/", card["grape_image_url"])
 
     def test_normalize_handles_cyrillic_yo(self):
         self.assertEqual(normalize("Ёж и Chardonnay"), "еж и chardonnay")

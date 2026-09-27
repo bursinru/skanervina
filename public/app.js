@@ -9,7 +9,7 @@ const paths = {
   star: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/>',
   pin: '<path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',
   grapes: '<circle cx="12" cy="6" r="2"/><circle cx="8" cy="10" r="2"/><circle cx="16" cy="10" r="2"/><circle cx="10" cy="14" r="2"/><circle cx="14" cy="14" r="2"/><circle cx="12" cy="18" r="2"/><path d="M12 4c1-2 3-2 4-2"/>',
-  temperature: '<path d="M14 14.5V5a2 2 0 0 0-4 0v9.5a5 5 0 1 0 4 0Z"/><path d="M12 9v8"/>',
+  temperature: '<path d="M10 13.6V5a2 2 0 1 1 4 0v8.6a4 4 0 1 1-4 0Z"/><path d="M12 10v6.5M16.5 5.5H19M16.5 9H19"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
   utensils: '<path d="M4 3v6a3 3 0 0 0 6 0V3M7 3v18M19 3c-4 4-4 10 0 10V3v18"/>',
   sparkles: '<path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5zM20 2v4m-2-2h4"/>',
@@ -185,6 +185,26 @@ function wineSweetness(wine) {
   if (text.includes('сух') || text.includes('брют')) return text.includes('брют') ? 'Брют' : 'Сухое';
   if (text.includes('сладк')) return 'Сладкое';
   return '';
+}
+// Swatch for the catalog colour text ("Золотистый, янтарный"): the first colour word wins.
+const wineColorSwatches = [
+  [/оранж/, '#f6c08d', '#e38a47'], [/янтар|коньяч/, '#f3c97c', '#d9923a'], [/золот/, '#f8e7a8', '#e9c86a'],
+  [/лимон|желт|жёлт/, '#fbf5c4', '#efe59a'], [/соломен|бел|прозрач/, '#fcf8dc', '#efe8bd'], [/лосос/, '#fbd3c0', '#f0a78c'],
+  [/розов/, '#fbd5d8', '#ee9fae'], [/кирпич/, '#c46a4b', '#933f2a'], [/вишн/, '#95243a', '#5e1022'],
+  [/фиолет|пурпур/, '#76224b', '#45102c'], [/гранат/, '#8f2130', '#58101d'], [/рубин|красн/, '#a92b40', '#6d1426']
+];
+const wineStyleSwatches = { 'Белое': ['#fcf8dc', '#efe8bd'], 'Оранжевое': ['#f6c08d', '#e38a47'], 'Розовое': ['#fbd5d8', '#ee9fae'], 'Красное': ['#a92b40', '#6d1426'] };
+function wineColorSwatch(wine) {
+  // Orange wines are described as "золотисто-янтарный"; the style reads better.
+  if (inferWineColor(wine) === 'Оранжевое') return `linear-gradient(160deg, ${wineStyleSwatches['Оранжевое'].join(' 0%, ')} 100%)`;
+  const text = normalizeCatalogValue(wine.color);
+  let best = null;
+  for (const [pattern, from, to] of wineColorSwatches) {
+    const index = text.search(pattern);
+    if (index >= 0 && (!best || index < best.index)) best = { index, from, to };
+  }
+  const [from, to] = best ? [best.from, best.to] : (wineStyleSwatches[inferWineColor(wine)] || []);
+  return from ? `linear-gradient(160deg, ${from} 0%, ${to} 100%)` : '';
 }
 // "Белое · Сладкое": the same wording on the wine card and in the comparison.
 function wineStyleTags(wine) {
@@ -1067,12 +1087,14 @@ function showWine(wine, scanMeta = null, options = {}) {
   const tastingNotes = aromaNotes.slice(0, 4).map(note => `<div class="tasting-note">${tastingNoteIllustration(note)}<span>${escape(note)}</span></div>`).join('');
   const regionImage = catalogAsset('region', wine.region) || safeImage(wine.region_image_url);
   const grapeImage = grapes.map(grape => catalogAsset('grape', grape)).find(Boolean) || safeImage(wine.grape_image_url);
+  const colorSwatch = wineColorSwatch(wine);
   const metadataItems = [
     wine.region ? `<div class="wine-meta-item${regionImage ? ' has-image' : ''}"><span class="wine-meta-icon">${icon('pin')}</span>${regionImage ? `<img src="${escape(regionImage)}" alt="" loading="lazy">` : ''}<div><small>Регион</small><strong>${escape(wine.region)}</strong></div></div>` : '',
-    grapes.length ? `<div class="wine-meta-item${grapeImage ? ' has-image' : ''}"><span class="wine-meta-icon">${icon('grapes')}</span>${grapeImage ? `<img src="${escape(grapeImage)}" alt="" loading="lazy">` : ''}<div><small>Сорт винограда</small><strong>${escape(grapes.join(', '))}</strong></div></div>` : ''
+    grapes.length ? `<div class="wine-meta-item${grapeImage ? ' has-image' : ''}"><span class="wine-meta-icon">${icon('grapes')}</span>${grapeImage ? `<img src="${escape(grapeImage)}" alt="" loading="lazy">` : ''}<div><small>Сорт винограда</small><strong>${escape(grapes.join(', '))}</strong></div></div>` : '',
+    wine.color && colorSwatch ? `<div class="wine-meta-item has-image"><span class="wine-meta-swatch" style="background:${colorSwatch}" aria-hidden="true"></span><div><small>Цвет</small><strong>${escape(wine.color.replace(/^вино\s+|\.$/gi, '').replace(/^./, c => c.toUpperCase()))}</strong></div></div>` : ''
   ].filter(Boolean).join('');
   const wineFactItems = [
-    wine.alcohol ? `<article class="wine-fact"><span class="wine-fact-icon">${icon('wine')}</span><div><strong>${escape(wine.alcohol)}</strong><small>Крепость</small></div></article>` : '',
+    wine.alcohol ? `<article class="wine-fact"><span class="wine-fact-icon">${icon('percent')}</span><div><strong>${escape(wine.alcohol)}</strong><small>Крепость</small></div></article>` : '',
     wine.temperature ? `<article class="wine-fact"><span class="wine-fact-icon">${icon('temperature')}</span><div><strong>${escape(wine.temperature)}</strong><small>Температура подачи</small></div></article>` : '',
     wine.volume ? `<article class="wine-fact"><span class="wine-fact-icon">${icon('wine')}</span><div><strong>${escape(wine.volume)}</strong><small>Объём</small></div></article>` : wine.year ? `<article class="wine-fact"><span class="wine-fact-icon">${icon('calendar')}</span><div><strong>${escape(wine.year)}</strong><small>Год урожая</small></div></article>` : ''
   ].filter(Boolean).join('');
@@ -1091,7 +1113,7 @@ function showWine(wine, scanMeta = null, options = {}) {
         <div class="wine-details"><p class="eyebrow">${escape(wine.winery)}</p><h1>${wineTitle(wine.name)}</h1><p class="wine-category">${escape(categoryLine)}</p>
           <div class="public-rating" aria-label="Народный рейтинг ${rating === '—' ? 'пока не указан' : `${escape(rating)} из 5`}${ratingCount ? `, ${escape(ratingCount)}` : ''}"><div class="public-rating-badge"><span class="rating-star" aria-hidden="true">★</span><strong>${escape(rating)}</strong><span class="rating-copy"><small>Народный рейтинг</small>${ratingCount ? `<small>${escape(ratingCount)}</small>` : ''}</span></div></div>
         </div>
-        ${metadataItems ? `<section class="wine-metadata" aria-label="Регион и сорт винограда">${metadataItems}</section>` : ''}
+        ${metadataItems ? `<section class="wine-metadata" aria-label="Регион, сорт винограда и цвет">${metadataItems}</section>` : ''}
       </div>
       <section class="result-taste" aria-label="Вкусовой профиль и основные ноты">
         <section class="taste-profile" aria-labelledby="taste-profile-title"><div class="taste-profile-heading"><h2 id="taste-profile-title">Вкусовой профиль</h2><span>Оценка по данным каталога</span></div>${profileRows.map(({ key, label }) => `<div class="taste-row"><span>${escape(label)}</span><span class="taste-meter" role="img" aria-label="${escape(label)}: ${tasteProfile[key]} из 5"><i style="left:${(tasteProfile[key] - 1) * 25}%"></i></span></div>`).join('')}</section>
