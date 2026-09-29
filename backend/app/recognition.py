@@ -25,6 +25,8 @@ OCR_FRAME_SIDE = int(os.getenv('CV_OCR_FRAME_SIDE', '1280'))
 # Cropping to the detected bottle before search: on 107 shop and live photos it
 # fixed 7, broke 12 and cost ~0.6 s. The user-picked box (/v1/bottles) still works.
 BOTTLE_AUTO = os.getenv('CV_BOTTLE_AUTO', 'false').lower() == 'true'
+LEAD_MATCH = float(os.getenv('CV_FUSION_LEAD_MATCH', '0.6'))
+VISUAL_LEAD = float(os.getenv('CV_FUSION_VISUAL_LEAD', '0.06'))
 
 
 class Recognizer:
@@ -623,7 +625,12 @@ class Recognizer:
         best = ranked[0]
         wine = self.catalog.get(best['slug'])
         match_at = float(os.getenv('CV_FUSION_MATCH', str(self.fusion.get('match_probability', 0.8))))
-        if wine and best['probability'] >= match_at:
+        # A clear picture lead also earns a card: p >= 0.6 with the top wine 0.06
+        # above every other candidate by SigLIP. Cross-validated: card on 46% of
+        # photos instead of 42%, precision 96.3% instead of 97.1%.
+        visual_lead = best['visual'] - max((item['visual'] for item in ranked[1:]), default=0.0)
+        clear_picture = best['probability'] >= LEAD_MATCH and visual_lead >= VISUAL_LEAD
+        if wine and (best['probability'] >= match_at or clear_picture):
             status = 'matched'
         elif wine and (best['probability'] >= 0.35 or best['visual'] >= 0.65):
             status = 'uncertain'
@@ -643,6 +650,7 @@ class Recognizer:
             ocr_enabled=True,
             text_matched=best['text_matched'],
             match_probability=match_at,
+            visual_lead=round(visual_lead, 4),
         )
         metrics['timings_ms'].update(visual=round(visual_ms, 1), ocr=round(state['ocr_ms'], 1))
         ranking = ranking_metrics(ranked)
