@@ -682,7 +682,10 @@ class Recognizer:
             })
         best = ranked[0]
         wine = self.catalog.get(best['slug'])
-        match_at = float(os.getenv('CV_FUSION_MATCH', str(self.fusion.get('match_probability', 0.8))))
+        # Product decision: a leader with 40% or more opens its card. Cross-validation
+        # at 0.5 gave a card on 72% of photos with 88% of them right; 0.4 trades a
+        # little more precision for fewer «not found» screens.
+        match_at = float(os.getenv('CV_FUSION_MATCH', '0.4'))
         # A clear picture lead also earns a card: p >= 0.6 with the top wine 0.06
         # above every other candidate by SigLIP. Cross-validated: card on 46% of
         # photos instead of 42%, precision 96.3% instead of 97.1%.
