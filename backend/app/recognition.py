@@ -1,6 +1,8 @@
 import shutil
 import os
+import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
 from io import BytesIO
 from threading import Lock
@@ -15,6 +17,9 @@ from .settings import Settings
 from .label_ocr import read_label, load_references
 from .vision import merge_query_views
 from pathlib import Path
+
+# PP-OCR of a query runs next to SigLIP encoding.
+_OCR_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix='label-ocr')
 
 
 class Recognizer:
@@ -50,6 +55,30 @@ class Recognizer:
             except Exception:
                 logging.exception('Could not initialize visual search')
                 self.visual_status = 'unavailable'
+        self.fusion = None
+        self.text_index = None
+        self.photo_index = None
+        if os.getenv('CV_FUSION', 'true').lower() == 'true':
+            self._load_fusion()
+
+    def _load_fusion(self):
+        """Visual + label-text ranker. Missing weights keep the older cascade."""
+
+        from .fusion import PHOTO_TEXT_PATH, load_weights
+        from .label_text import TextIndex, catalog_documents
+
+        weights = load_weights()
+        if weights is None:
+            logging.warning('fusion.json missing or stale; label text fusion is off')
+            return
+        wines = list(self.catalog)
+        self.text_index = TextIndex(catalog_documents(wines), wines)
+        try:
+            photo = json.loads(PHOTO_TEXT_PATH.read_text())
+            self.photo_index = TextIndex({slug: [tuple(word) for word in words] for slug, words in photo.items()})
+        except (OSError, ValueError):
+            logging.warning('Catalog photo text missing; fusion reads card fields only')
+        self.fusion = weights
 
 
     def _text_matches(self, text):
@@ -351,6 +380,16 @@ class Recognizer:
                 include_candidates,
             )
 
+        fusion_ready = (
+            self.visual is not None
+            and self.fusion is not None
+            and mode == "combined"
+            and getattr(self.visual, 'secondary_ready', False) is True
+            and ocr_enabled is not False
+        )
+        if fusion_ready:
+            return self._fused_result(work_image, search_image, base_metrics, include_candidates, compare_slug)
+
         if self.visual:
             visual_started = perf_counter()
             if mode == "combined" and getattr(self.visual, 'secondary_ready', False) is True:
@@ -515,6 +554,127 @@ class Recognizer:
             return {'status': 'unknown', 'recognition': metrics}
         text, ocr_status = self._ocr(self._image_bytes(work_image), psm=6)
         return self._ocr_result(text, ocr_status, base_metrics('ocr+catalog'), 0.0, include_candidates)
+
+    def _read_words(self, label, frame):
+        from .label_text import ocr_words
+        from .pp_ocr import line_text, read_lines
+
+        started = perf_counter()
+        words, texts = [], []
+        for image in ([label] if label is frame else [label, frame]):
+            lines = read_lines(image)
+            words += ocr_words(lines, image.size)
+            texts.append(line_text(lines))
+        return words, ' | '.join(text for text in texts if text), (perf_counter() - started) * 1000
+
+    def _fused_result(self, label, frame, base_metrics, include_candidates, compare_slug):
+        """SigLIP and PP-OCR in parallel, then the trained softmax over candidates."""
+
+        from . import fusion
+
+        started = perf_counter()
+        reading = _OCR_POOL.submit(self._read_words, label, frame)
+        state = {}
+
+        def text_candidates():
+            words, text, ocr_ms = reading.result()
+            state.update(
+                words=words, text=text, ocr_ms=ocr_ms,
+                card=self.text_index.score(words),
+                photo=self.photo_index.score(words) if self.photo_index is not None else None,
+            )
+            extra = state['card'].top(self.fusion['text_n'])
+            if state['photo'] is not None:
+                extra += state['photo'].top(self.fusion['text_n'])
+            return extra
+
+        rows = self.visual.search_combined(label, frame, limit=self.fusion['visual_k'], extra_slugs=text_candidates)
+        if 'card' not in state:
+            text_candidates()
+        visual_ms = (perf_counter() - started) * 1000
+        if not rows:
+            metrics = base_metrics('siglip2+pgvector')
+            metrics['reason'] = 'index_empty'
+            return {'status': 'unknown', 'recognition': metrics}
+        visual = {row['slug']: float(row['score']) for row in rows}
+        details = {row['slug']: row for row in rows}
+        ranked = []
+        for item in fusion.rank(visual, state['card'], self.fusion, state['photo']):
+            row = details.get(item['slug'], {})
+            ranked.append({
+                **item,
+                'score': item['probability'],
+                'siglip': round(item['visual'], 4),
+                'image_hash': row.get('image_hash'),
+                'full_score': row.get('full_score'),
+                'crop_score': row.get('crop_score'),
+                'primary_score': row.get('primary_score'),
+                'secondary_score': row.get('secondary_score'),
+            })
+        best = ranked[0]
+        wine = self.catalog.get(best['slug'])
+        match_at = float(os.getenv('CV_FUSION_MATCH', str(self.fusion.get('match_probability', 0.8))))
+        if wine and best['probability'] >= match_at:
+            status = 'matched'
+        elif wine and (best['probability'] >= 0.35 or best['visual'] >= 0.65):
+            status = 'uncertain'
+        else:
+            status = 'unknown'
+        metrics = base_metrics('siglip2+ppocr+fusion')
+        metrics.update(
+            similarity=round(best['visual'], 4),
+            siglip=round(best['visual'], 4),
+            probability=round(best['probability'], 4),
+            crop_jpeg_base64=self._preview_jpeg(label),
+            compared_with=self._compare_views(ranked[:2], with_catalog_crops=include_candidates),
+            margin=round(best['probability'] - (ranked[1]['probability'] if len(ranked) > 1 else 0.0), 4),
+            ocr='ppocr',
+            ocr_characters=len(state['text']),
+            ocr_text=state['text'][:500],
+            ocr_enabled=True,
+            text_matched=best['text_matched'],
+            match_probability=match_at,
+        )
+        metrics['timings_ms'].update(visual=round(visual_ms, 1), ocr=round(state['ocr_ms'], 1))
+        ranking = ranking_metrics(ranked)
+        ranking['top5'] = [
+            {
+                'slug': item['slug'],
+                'name': self.catalog.get(item['slug']).name if self.catalog.get(item['slug']) else item['slug'],
+                'winery': self.catalog.get(item['slug']).winery if self.catalog.get(item['slug']) else '',
+                'score': round(item['probability'], 4),
+                'probability': round(item['probability'], 4),
+                'siglip': item['siglip'],
+                'text_score': item['text_score'],
+                'text_matched': item['text_matched'],
+                'image_hash': item.get('image_hash'),
+                'image_url': self.catalog.get(item['slug']).image_url if self.catalog.get(item['slug']) else None,
+                'full_score': item.get('full_score'),
+                'crop_score': item.get('crop_score'),
+                'primary_score': item.get('primary_score'),
+                'secondary_score': item.get('secondary_score'),
+            }
+            for item in ranked[:5]
+        ]
+        metrics['candidates'] = ranking['top5']
+        probe = self._probe_slug(label, compare_slug, crop_color_features(label), state['text'], True, include_candidates)
+        if probe is not None:
+            metrics['probe'] = probe
+        result = {
+            'status': status,
+            'confidence': round(best['probability'], 4),
+            'recognition': metrics,
+            'ranking': ranking,
+            'lookalikes': self._lookalike_cards(
+                item for item in ranked if not (status == 'matched' and item['slug'] == best['slug'])
+            ),
+        }
+        if wine:
+            result['slug'] = wine.slug
+            result['alternatives'] = recommend_alternatives(self.catalog, wine)
+            if status == 'matched':
+                result['wine'] = wine.to_card()
+        return result
 
     def _lookalike_cards(self, items: Iterable[Any], limit: int = 5) -> List[Dict[str, Any]]:
         cards: List[Dict[str, Any]] = []

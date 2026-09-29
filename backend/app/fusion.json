@@ -1,0 +1,37 @@
+{
+  "features": [
+    "visual_gap",
+    "visual_far",
+    "text_share",
+    "text_log",
+    "coverage",
+    "sweetness",
+    "colour",
+    "year",
+    "text_leader",
+    "contradiction",
+    "text_margin",
+    "photo_text_share",
+    "photo_text_log"
+  ],
+  "weights": [
+    26.89784,
+    6.22669,
+    1.25038,
+    0.26364,
+    9.00645,
+    0.6606,
+    0.79866,
+    -0.15175,
+    0.07948,
+    -0.17179,
+    3.60001,
+    0.92562,
+    0.29754
+  ],
+  "visual_k": 20,
+  "text_n": 10,
+  "l2": 0.05,
+  "match_probability": 0.8,
+  "trained_on": 205
+}

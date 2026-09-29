@@ -1,6 +1,7 @@
 """PP-OCRv5 for the grape line. Tesseract stays the fallback."""
 
 import logging
+from threading import Lock
 from typing import Any, List
 
 import numpy as np
@@ -17,6 +18,8 @@ _LOOKALIKE = str.maketrans({
 
 _ENGINE = None
 _FAILED = False
+# One engine for both inference slots; runs are serialised to stay safe.
+_LOCK = Lock()
 
 
 def fold_lookalikes(word: str) -> str:
@@ -61,14 +64,17 @@ def _engine():
 def read_lines(image: Image.Image) -> List[dict]:
     """Text lines with boxes. Empty when the Cyrillic model is not installed."""
 
-    engine = _engine()
-    if engine is None or image is None:
+    if image is None:
         return []
-    try:
-        result = engine(np.asarray(image.convert("RGB")))
-    except Exception:
-        logging.exception("PP-OCRv5 failed on a label")
-        return []
+    with _LOCK:
+        engine = _engine()
+        if engine is None:
+            return []
+        try:
+            result = engine(np.asarray(image.convert("RGB")))
+        except Exception:
+            logging.exception("PP-OCRv5 failed on a label")
+            return []
     texts = getattr(result, "txts", None) or ()
     scores = getattr(result, "scores", None) or ()
     boxes = getattr(result, "boxes", None)

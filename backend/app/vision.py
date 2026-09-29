@@ -153,8 +153,12 @@ class VisualSearch:
             FROM wine_embeddings WHERE model = %s AND slug = ANY(%s)
         ''', (*[str(vector) for vector in vectors], model, list(slugs))).fetchall()
 
-    def search_combined(self, label_image, full_image, limit=8):
-        """224 label + frame queries fused with a 384 frame query, scored exactly per wine."""
+    def search_combined(self, label_image, full_image, limit=8, extra_slugs=None):
+        """224 label + frame queries fused with a 384 frame query, scored exactly per wine.
+
+        extra_slugs is called after encoding (OCR runs meanwhile); its wines are
+        scored exactly too and returned beyond the limit, even if ANN missed them.
+        """
         from .database import connect
         images = [label_image] if label_image is full_image else [label_image, full_image]
         primary_vectors = self.encoder.encode(images)
@@ -164,10 +168,15 @@ class VisualSearch:
             for vector in primary_vectors:
                 slugs += [row['slug'] for row in best_by_slug(self._nearest(db, vector, MODEL_ID, limit), limit)]
             slugs += [row['slug'] for row in best_by_slug(self._nearest(db, secondary_vector, SECONDARY_MODEL_ID, limit), limit)]
-            slugs = list(dict.fromkeys(slugs))
+            extra = list(extra_slugs() or ()) if extra_slugs else []
+            slugs = list(dict.fromkeys(slugs + extra))
             primary = self._slug_rows(db, primary_vectors, MODEL_ID, slugs)
             secondary = self._slug_rows(db, [secondary_vector], SECONDARY_MODEL_ID, slugs)
-        return fuse_scores(primary, secondary, limit=limit)
+        fused = fuse_scores(primary, secondary, limit=len(slugs))
+        if not extra:
+            return fused[:limit]
+        wanted = set(extra)
+        return fused[:limit] + [row for row in fused[limit:] if row['slug'] in wanted]
 
     def search(self, image, limit=5):
         from .database import connect
