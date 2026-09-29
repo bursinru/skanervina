@@ -31,6 +31,9 @@ VISUAL_LEAD = float(os.getenv('CV_FUSION_VISUAL_LEAD', '0.06'))
 # one distribution, so 57% against 19% is already a decided leader.
 SHARE_MATCH = float(os.getenv('CV_FUSION_SHARE_MATCH', '0.5'))
 SHARE_GAP = float(os.getenv('CV_FUSION_SHARE_GAP', '0.1'))
+TEXT_LEAD_MATCH = float(os.getenv('CV_FUSION_TEXT_MATCH', '0.4'))
+TEXT_LEAD = float(os.getenv('CV_FUSION_TEXT_LEAD', '0.25'))
+TEXT_COVERAGE = float(os.getenv('CV_FUSION_TEXT_COVERAGE', '0.2'))
 
 
 def share_leads(probability: float, runner: float, minimum: float = SHARE_MATCH, gap: float = SHARE_GAP) -> bool:
@@ -686,7 +689,18 @@ class Recognizer:
         visual_lead = best['visual'] - max((item['visual'] for item in ranked[1:]), default=0.0)
         clear_picture = best['probability'] >= LEAD_MATCH and visual_lead >= VISUAL_LEAD
         runner_probability = ranked[1]['probability'] if len(ranked) > 1 else 0.0
-        if wine and (best['probability'] >= match_at or clear_picture or share_leads(best['probability'], runner_probability)):
+        # A clear text leader too: «МУСКАТЕЛЬ … БЕЛЫЙ» names one wine even when
+        # the catalog photo looks different. p >= 0.4, text 25% above every other
+        # candidate, 20% of its catalog identity read. Cross-validated: card on
+        # 49% of photos instead of 46%, precision 95.5% instead of 96.3%.
+        other_text = max((item['text_score'] for item in ranked[1:]), default=0.0)
+        text_lead = (best['text_score'] - other_text) / best['text_score'] if best['text_score'] > 0 else 0.0
+        clear_text = (
+            best['probability'] >= TEXT_LEAD_MATCH
+            and text_lead >= TEXT_LEAD
+            and best['text_coverage'] >= TEXT_COVERAGE
+        )
+        if wine and (best['probability'] >= match_at or clear_picture or clear_text or share_leads(best['probability'], runner_probability)):
             status = 'matched'
         elif wine and (best['probability'] >= 0.35 or best['visual'] >= 0.65):
             status = 'uncertain'
@@ -707,6 +721,8 @@ class Recognizer:
             text_matched=best['text_matched'],
             match_probability=match_at,
             visual_lead=round(visual_lead, 4),
+            text_lead=round(text_lead, 4),
+            text_coverage=round(best['text_coverage'], 4),
         )
         metrics['timings_ms'].update(visual=round(visual_ms, 1), ocr=round(state['ocr_ms'], 1))
         ranking = ranking_metrics(ranked)
