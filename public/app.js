@@ -586,12 +586,19 @@ async function selectPhoto(file) {
   stopCamera(); if (photoUrl) URL.revokeObjectURL(photoUrl);
   photo = file; photoUrl = candidateUrl;
   $('photo-preview').src = canPreview ? photoUrl : '';
-  $('photo-preview').hidden = !canPreview;
+  $('dropzone').style.setProperty('--photo-url', canPreview ? `url("${photoUrl}")` : 'none');
+  showPhotoPreview(canPreview);
   $('example-bottle').hidden = true; $('sample-label').hidden = true;
   $('viewfinder-caption').textContent = canPreview
     ? 'Ваше фото · проверьте читаемость этикетки'
     : 'HEIC с iPhone принят. В этом браузере превью нет — нажмите «Узнать вино».';
   updateControls('preview');
+}
+// The blurred copy behind the photo replaces black letterbox bars in the square frame.
+function showPhotoPreview(show) {
+  const visible = show && !!$('photo-preview').getAttribute('src');
+  $('photo-preview').hidden = !visible;
+  $('photo-backdrop').hidden = !visible;
 }
 $('upload').onclick = $('replace-photo').onclick = () => { $('file-input').value = ''; $('file-input').click(); };
 $('file-input').onchange = e => selectPhoto(e.target.files[0]);
@@ -608,11 +615,11 @@ $('open-camera').onclick = async () => {
     if (generation !== cameraGeneration) { acquired.getTracks().forEach(t => t.stop()); return; }
     stream = acquired; $('camera-video').srcObject = stream; $('camera-video').hidden = false;
     await $('camera-video').play(); $('example-bottle').hidden = true; $('sample-label').hidden = true;
-    $('photo-preview').hidden = true; updateControls('camera');
+    showPhotoPreview(false); updateControls('camera');
   } catch (err) { stopCamera(); notice(err.name === 'NotAllowedError' ? 'Доступ к камере не разрешён. Разрешите его в настройках браузера или загрузите фото.' : 'Не удалось включить камеру. Проверьте, что она свободна, или загрузите фото.'); }
   finally { $('open-camera').disabled = false; }
 };
-$('close-camera').onclick = () => { stopCamera(); $('photo-preview').hidden = !photo; $('example-bottle').hidden = !!photo; $('sample-label').hidden = !!photo; updateControls(photo ? 'preview' : 'initial'); };
+$('close-camera').onclick = () => { stopCamera(); showPhotoPreview(!!photo); $('example-bottle').hidden = !!photo; $('sample-label').hidden = !!photo; updateControls(photo ? 'preview' : 'initial'); };
 $('capture').onclick = () => {
   const video = $('camera-video'); if (!video.videoWidth) { notice('Камера ещё запускается. Попробуйте через секунду.'); return; }
   const canvas = document.createElement('canvas'); canvas.width = video.videoWidth; canvas.height = video.videoHeight;
@@ -905,71 +912,113 @@ function bindDebugPanel() {
   };
 }
 $('recognize').onclick = () => runRecognize();
-// The server silhouette and comparison crop share the same source coordinates.
+// Wine glass progress: the stages come from the product spec, the last one waits
+// for the server. The glass never claims 100% before the answer is in.
+const SCAN_STAGES = [[250, .25, 'Читаем этикетку'], [1300, .5, 'Ищем похожие вина'], [2600, .75, 'Проверяем совпадение'], [4600, .86, 'Почти готово']];
+let scanStageTimers = [];
+function setScanProgress(fill, text) {
+  $('scan-progress').style.setProperty('--fill', fill);
+  $('scan-percent').textContent = `${Math.round(fill * 100)}%`;
+  if (text) $('processing-status').textContent = text;
+}
+function startScanProgress() {
+  stopScanProgress();
+  const progress = $('scan-progress');
+  progress.classList.remove('sparkling');
+  progress.style.removeProperty('--wine-liquid');
+  setScanProgress(.06, 'Готовим фото…');
+  scanStageTimers = SCAN_STAGES.map(([delay, fill, text]) => setTimeout(() => setScanProgress(fill, text), delay));
+}
+function stopScanProgress() {
+  scanStageTimers.forEach(clearTimeout);
+  scanStageTimers = [];
+}
+function wineLiquid(wine) {
+  const text = `${wine?.category || ''} ${wine?.color || ''} ${wine?.name || ''}`.toLowerCase();
+  const colour = text.includes('розов') ? '#e7939d' : text.includes('оранж') ? '#d98a3d'
+    : text.includes('бел') ? '#e2c46c' : text.includes('красн') ? '#861f33' : '';
+  return { colour, sparkling: /брют|игрист|шампан|петнат|pet.?nat/.test(text) };
+}
+function waitFor(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+    const done = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, ms);
+    const abort = () => { clearTimeout(done); reject(new DOMException('Aborted', 'AbortError')); };
+    signal.addEventListener('abort', abort, { once: true });
+  });
+}
+async function finishScanProgress(result, signal) {
+  stopScanProgress();
+  const found = result.status === 'matched';
+  const wine = found ? result.wine : result.lookalikes?.[0];
+  const { colour, sparkling } = wineLiquid(wine);
+  if (colour) $('scan-progress').style.setProperty('--wine-liquid', colour);
+  $('scan-progress').classList.toggle('sparkling', sparkling);
+  setScanProgress(1, found ? 'Нашли' : 'Готово — покажем похожие');
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) await waitFor(700, signal);
+}
+
+// Rounded-corner outline in viewBox units: a box or quad keeps its shape, only
+// the corners soften; dense detector contours stay as they are.
+function roundedOutline(points, width, height, radius) {
+  const pts = points.map(([x, y]) => [x * width, y * height]);
+  const n = pts.length;
+  let d = '';
+  pts.forEach((p, i) => {
+    const prev = pts[(i + n - 1) % n], next = pts[(i + 1) % n];
+    const inLen = Math.hypot(p[0] - prev[0], p[1] - prev[1]) || 1;
+    const outLen = Math.hypot(next[0] - p[0], next[1] - p[1]) || 1;
+    const r = Math.min(radius, inLen * .45, outLen * .45);
+    const a = [p[0] - (p[0] - prev[0]) / inLen * r, p[1] - (p[1] - prev[1]) / inLen * r];
+    const b = [p[0] + (next[0] - p[0]) / outLen * r, p[1] + (next[1] - p[1]) / outLen * r];
+    d += `${i ? 'L' : 'M'}${a[0].toFixed(1)} ${a[1].toFixed(1)}Q${p[0].toFixed(1)} ${p[1].toFixed(1)} ${b[0].toFixed(1)} ${b[1].toFixed(1)}`;
+  });
+  return d + 'Z';
+}
+function resetLabelTrace() {
+  const cutout = $('label-cutout');
+  cutout.classList.remove('revealing');
+  for (const name of ['--zoom', '--tx', '--ty']) cutout.style.removeProperty(name);
+  $('label-trace').querySelectorAll('path').forEach(path => path.removeAttribute('d'));
+}
+// The server contour is in normalized photo coordinates: dim the rest of the
+// photo, draw the outline in light and ease the camera towards the label.
+function detectionOutline(detection) {
+  if (Array.isArray(detection?.contour) && detection.contour.length >= 3) return detection.contour;
+  if (Array.isArray(detection?.quad) && detection.quad.length >= 3) return detection.quad;
+  // Many photos only get a box; roundedOutline softens its corners.
+  const box = detection?.bbox;
+  if (!Array.isArray(box) || box.length !== 4) return null;
+  const [left, top, right, bottom] = box;
+  return [[left, top], [right, top], [right, bottom], [left, bottom]];
+}
 async function revealLabel(detection, signal) {
-  const points = detection?.contour;
-  if (!Array.isArray(points) || points.length < 3 || points.some(p =>
+  const points = detectionOutline(detection);
+  const cutout = $('label-cutout');
+  if (cutout.hidden || !Array.isArray(points) || points.length < 3 || points.some(p =>
     !Array.isArray(p) || p.length !== 2 || p.some(v => !Number.isFinite(v) || v < 0 || v > 1))) return;
   const source = $('scanning-label');
   try { await source.decode(); } catch { return; }
   if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
-  const canvas = document.createElement('canvas');
-  const scale = Math.min(1, 640 / Math.max(source.naturalWidth, source.naturalHeight));
-  canvas.width = Math.round(source.naturalWidth * scale);
-  canvas.height = Math.round(source.naturalHeight * scale);
-  canvas.setAttribute('aria-label', 'Выделенная этикетка');
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  const w = canvas.width, h = canvas.height;
-  const background = document.createElement("canvas");
-  background.width = w; background.height = h;
-  background.getContext("2d").drawImage(source, 0, 0, w, h);
-  const path = new Path2D();
-  points.forEach(([x, y], i) => i ? path.lineTo(x * w, y * h) : path.moveTo(x * w, y * h));
-  path.closePath();
-  const label = document.createElement('canvas');
-  label.width = w; label.height = h;
-  const lc = label.getContext('2d');
-  lc.clip(path); lc.drawImage(source, 0, 0, w, h);
+  const width = 1000, height = Math.round(1000 * source.naturalHeight / source.naturalWidth);
+  const svg = $('label-trace');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  const d = roundedOutline(points, width, height, 22);
+  svg.querySelector('.trace-hole').setAttribute('d', d);
+  const line = svg.querySelector('.trace-line');
+  line.setAttribute('d', d);
+  line.style.strokeWidth = (2.4 * width / Math.max(1, source.clientWidth)).toFixed(2);
   const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
-  const cx = (Math.min(...xs) + Math.max(...xs)) * w / 2;
-  const cy = (Math.min(...ys) + Math.max(...ys)) * h / 2;
-  const zoom = Math.min(1.7, .85 / Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)));
-  const container = source.parentElement;
-  container.append(canvas); container.classList.add('revealing');
-  $('processing-status').textContent = 'Отделяем этикетку от фона…';
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  await new Promise((resolve, reject) => {
-    let frame, start;
-    const cleanup = () => { cancelAnimationFrame(frame); signal.removeEventListener('abort', abort); };
-    const abort = () => { cleanup(); reject(new DOMException('Aborted', 'AbortError')); };
-    signal.addEventListener('abort', abort, { once: true });
-    const draw = now => {
-      start ??= now;
-      const t = reduced ? 1 : Math.min(1, (now - start) / 1350);
-      const fade = Math.min(1, t / .7);
-      ctx.clearRect(0, 0, w, h);
-      ctx.save();
-      const move = Math.max(0, (t - .5) * 2); const ease = move * move * (3 - 2 * move);
-      ctx.translate((w / 2 - cx) * ease, (h / 2 - cy) * ease);
-      ctx.translate(cx, cy); ctx.scale(1 + (zoom - 1) * ease, 1 + (zoom - 1) * ease); ctx.translate(-cx, -cy);
-      ctx.globalAlpha = (1 - fade) ** 2;
-      ctx.drawImage(source, 0, 0, w, h);
-      // A soft, staggered dissolution leaves the actual label untouched.
-      const tile = 10;
-      for (let y = 0; y < h; y += tile) for (let x = 0; x < w; x += tile) {
-        const delay = ((x * 17 + y * 31) % 101) / 101 * .25;
-        const local = Math.max(0, Math.min(1, (fade - delay) / .75));
-        ctx.globalAlpha = (1 - local) * local * .65;
-        const inset = local * tile / 2;
-        ctx.drawImage(background, x, y, Math.min(tile, w-x), Math.min(tile, h-y), x+inset, y+inset-local*12, tile-2*inset, tile-2*inset);
-      }
-      ctx.globalAlpha = 1; ctx.drawImage(label, 0, 0); ctx.restore();
-      if (t < 1) frame = requestAnimationFrame(draw);
-      else { cleanup(); resolve(); }
-    };
-    frame = requestAnimationFrame(draw);
-  });
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const zoom = Math.max(1, Math.min(1.45, .82 / Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))));
+  cutout.style.setProperty('--zoom', zoom.toFixed(3));
+  // Centre the label, but never pull the photo edge inside the frame.
+  const limit = (zoom - 1) / 2;
+  const shift = centre => Math.max(-limit, Math.min(limit, (.5 - centre) * zoom));
+  cutout.style.setProperty('--tx', `${(shift(cx) * 100).toFixed(2)}%`);
+  cutout.style.setProperty('--ty', `${(shift(cy) * 100).toFixed(2)}%`);
+  cutout.classList.add('revealing');
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) await waitFor(900, signal);
 }
 
 async function runRecognize(selectedBottleBox = null) {
@@ -979,10 +1028,11 @@ async function runRecognize(selectedBottleBox = null) {
   notice(''); controller = new AbortController(); const active = controller;
   const timer = setTimeout(() => active.abort('timeout'), 90000);
   const started = performance.now();
-  const cutout = $('scanning-label').parentElement;
-  cutout.querySelector('canvas')?.remove(); cutout.classList.remove('revealing');
-  $('scanning-label').src = photoUrl;
-  $('processing-status').textContent = 'Определяем бутылки на фото…';
+  resetLabelTrace();
+  const previewSrc = $('photo-preview').getAttribute('src');
+  $('label-cutout').hidden = !previewSrc;
+  if (previewSrc) $('scanning-label').src = previewSrc;
+  startScanProgress();
   $('scanner-screen').hidden = false;
   $('result-screen').hidden = true;
   startProcessingLog();
@@ -1007,7 +1057,6 @@ async function runRecognize(selectedBottleBox = null) {
         addProcessingLog('Не удалось определить бутылки; продолжим автоматический поиск');
       }
     }
-    $('processing-status').textContent = 'Ищем этикетку и вино в каталоге…';
     const body = new FormData(); body.append('image', photo);
     if (targetBottleBox) body.append('bottle_box', JSON.stringify(targetBottleBox));
     const ocrOn = debugOcrEnabled();
@@ -1023,7 +1072,7 @@ async function runRecognize(selectedBottleBox = null) {
     addProcessingLog(`Ответ сервера получен за ${formatElapsed(elapsed)}`);
     addProcessingLog(result.recognition?.ocr_enabled ? 'Сервер: OCR был включён' : 'Сервер: OCR был выключен');
     clearTimeout(timer);
-    await revealLabel(result.recognition?.label_detection, active.signal);
+    await Promise.all([finishScanProgress(result, active.signal), revealLabel(result.recognition?.label_detection, active.signal)]);
     if (active.signal.aborted) throw new DOMException('Aborted', 'AbortError');
     if (result.status === 'matched') {
       if (!result.wine?.name || !(result.wine.slug || result.slug)) throw new Error('contract');
@@ -1037,7 +1086,7 @@ async function runRecognize(selectedBottleBox = null) {
     throw new Error('contract');
   } catch (err) {
     notice(active.signal.aborted ? (active.signal.reason === 'timeout' ? 'Поиск занял слишком много времени. Попробуйте ещё раз.' : 'Поиск отменён. Можно выбрать другое фото.') : 'Сервис распознавания сейчас недоступен или вернул неполную карточку. Попробуйте позже.');
-  } finally { clearTimeout(timer); controller = null; stopProcessingLog(); $('processing').hidden = true; }
+  } finally { clearTimeout(timer); controller = null; stopScanProgress(); stopProcessingLog(); $('processing').hidden = true; }
 }
 $('cancel-request').onclick = () => controller?.abort('user');
 function wineSlugFromPath() {

@@ -2,7 +2,7 @@ import unittest
 
 from app.catalog import WineCatalog
 from app.fusion import FEATURES, rank
-from app.label_text import TextIndex, Word, catalog_documents, raw_words, reference_documents, style_of
+from app.label_text import TextIndex, Word, catalog_documents, lines_on_label, raw_words, reference_documents, style_of
 
 ROWS = [
     {"Slug": "loco-rkatsiteli", "Название вина": "Ркацители", "Винодельня": "Loco Cimbali",
@@ -93,6 +93,40 @@ class FusionTests(unittest.TestCase):
         ranked = rank(visual, self.index.score([]), self.weights)
         self.assertEqual([item["slug"] for item in ranked], ["loco-shardone", "loco-rkatsiteli"])
         self.assertAlmostEqual(sum(item["probability"] for item in ranked), 1.0)
+
+
+class ShelfLineTests(unittest.TestCase):
+    def test_neighbor_name_stays_off_the_center_label(self):
+        def line(text, x, y):
+            return {"text": text, "score": 0.9, "box": [[x, y], [x + 8, y], [x + 8, y + 4], [x, y + 4]]}
+
+        # Box is the center pink panel. «ТО РУЖ» is the bottle on the left.
+        kept = lines_on_label(
+            [
+                line("ТО РУЖ", 14, 71),
+                line("BYCCO", 47, 72),
+                line("INKERMAN", 47, 46),
+                line("INKERMAN", 48, 11),
+                line("ERMAN", 10, 46),
+            ],
+            (100, 100),
+            (0.318, 0.575, 0.637, 0.839),
+        )
+        self.assertEqual([item["text"] for item in kept], ["BYCCO", "INKERMAN"])
+
+
+class ShareLeadTests(unittest.TestCase):
+    def test_half_with_a_ten_point_gap_opens_the_card(self):
+        from app.recognition import share_leads
+
+        self.assertTrue(share_leads(0.575, 0.194))
+        self.assertTrue(share_leads(0.50, 0.40))
+
+    def test_a_narrow_lead_stays_a_list(self):
+        from app.recognition import share_leads
+
+        self.assertFalse(share_leads(0.52, 0.45))
+        self.assertFalse(share_leads(0.49, 0.20))
 
 
 if __name__ == "__main__":

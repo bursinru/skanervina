@@ -27,6 +27,52 @@ OCR_FRAME_SIDE = int(os.getenv('CV_OCR_FRAME_SIDE', '1280'))
 BOTTLE_AUTO = os.getenv('CV_BOTTLE_AUTO', 'false').lower() == 'true'
 LEAD_MATCH = float(os.getenv('CV_FUSION_LEAD_MATCH', '0.6'))
 VISUAL_LEAD = float(os.getenv('CV_FUSION_VISUAL_LEAD', '0.06'))
+# A majority share with a clear gap opens the card. The percents on screen are
+# one distribution, so 57% against 19% is already a decided leader.
+SHARE_MATCH = float(os.getenv('CV_FUSION_SHARE_MATCH', '0.5'))
+SHARE_GAP = float(os.getenv('CV_FUSION_SHARE_GAP', '0.1'))
+
+
+def share_leads(probability: float, runner: float, minimum: float = SHARE_MATCH, gap: float = SHARE_GAP) -> bool:
+    return probability + 1e-9 >= minimum and probability - runner + 1e-9 >= gap
+
+
+# A narrow panel on a wide frame is one bottle on a shelf. Text outside that
+# panel belongs to the neighbour and must not name the wine.
+SHELF_MAX_WIDTH = 0.48
+SHELF_MAX_AREA = 0.22
+
+
+def shelf_region(bbox) -> Optional[Tuple[float, float, float, float]]:
+    if not bbox or len(bbox) != 4:
+        return None
+    left, top, right, bottom = bbox
+    width, height = right - left, bottom - top
+    if width <= 0 or height <= 0 or width >= SHELF_MAX_WIDTH or width * height >= SHELF_MAX_AREA:
+        return None
+    return (float(left), float(top), float(right), float(bottom))
+
+
+def _style_band_lines(label):
+    """Upscaled bottom of a small label: the gold sweetness line is otherwise unread."""
+
+    from PIL import Image, ImageOps
+
+    from .pp_ocr import read_lines
+
+    width, height = label.size
+    if width < 20 or height < 40:
+        return [], (1, 1)
+    band = label.crop((0, int(height * 0.58), width, height))
+    long_side = max(band.size)
+    if 0 < long_side < 1000:
+        scale = 1000 / long_side
+        band = band.resize(
+            (max(1, round(band.width * scale)), max(1, round(band.height * scale))),
+            Image.Resampling.LANCZOS,
+        )
+    band = ImageOps.autocontrast(band.convert("L")).convert("RGB")
+    return read_lines(band), band.size
 
 
 class Recognizer:
@@ -397,7 +443,8 @@ class Recognizer:
             and ocr_enabled is not False
         )
         if fusion_ready:
-            return self._fused_result(work_image, search_image, base_metrics, include_candidates, compare_slug)
+            region = shelf_region(local_detection.bbox) if query_view == "label" else None
+            return self._fused_result(work_image, search_image, base_metrics, include_candidates, compare_slug, region)
 
         if self.visual:
             visual_started = perf_counter()
@@ -564,27 +611,35 @@ class Recognizer:
         text, ocr_status = self._ocr(self._image_bytes(work_image), psm=6)
         return self._ocr_result(text, ocr_status, base_metrics('ocr+catalog'), 0.0, include_candidates)
 
-    def _read_words(self, label, frame):
-        from .label_text import ocr_words
+    def _read_words(self, label, frame, region=None):
+        from .label_text import lines_on_label, ocr_words
         from .pp_ocr import line_text, read_lines
 
         started = perf_counter()
         # The frame alone gave the same 157/205 as frame + label crop (the crop
-        # alone 144), so only the frame is read: half the OCR time.
+        # alone 144), so a close-up still reads only the frame.
         image = frame
         if max(image.size) > OCR_FRAME_SIDE:
             image = image.copy()
             image.thumbnail((OCR_FRAME_SIDE, OCR_FRAME_SIDE))
         lines = read_lines(image)
-        return ocr_words(lines, image.size), line_text(lines), (perf_counter() - started) * 1000
+        extra, extra_size = [], image.size
+        if region is not None:
+            kept = lines_on_label(lines, image.size, region)
+            if kept:
+                lines = kept
+            extra, extra_size = _style_band_lines(label)
+        words = ocr_words(lines, image.size) + ocr_words(extra, extra_size)
+        text = " ".join(part for part in (line_text(lines), line_text(extra)) if part)
+        return words, text, (perf_counter() - started) * 1000
 
-    def _fused_result(self, label, frame, base_metrics, include_candidates, compare_slug):
+    def _fused_result(self, label, frame, base_metrics, include_candidates, compare_slug, region=None):
         """SigLIP and PP-OCR in parallel, then the trained softmax over candidates."""
 
         from . import fusion
 
         started = perf_counter()
-        reading = _OCR_POOL.submit(self._read_words, label, frame)
+        reading = _OCR_POOL.submit(self._read_words, label, frame, region)
         state = {}
 
         def text_candidates():
@@ -630,7 +685,8 @@ class Recognizer:
         # photos instead of 42%, precision 96.3% instead of 97.1%.
         visual_lead = best['visual'] - max((item['visual'] for item in ranked[1:]), default=0.0)
         clear_picture = best['probability'] >= LEAD_MATCH and visual_lead >= VISUAL_LEAD
-        if wine and (best['probability'] >= match_at or clear_picture):
+        runner_probability = ranked[1]['probability'] if len(ranked) > 1 else 0.0
+        if wine and (best['probability'] >= match_at or clear_picture or share_leads(best['probability'], runner_probability)):
             status = 'matched'
         elif wine and (best['probability'] >= 0.35 or best['visual'] >= 0.65):
             status = 'uncertain'

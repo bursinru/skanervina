@@ -204,6 +204,31 @@ class Evidence:
     year: int
 
 
+def lines_on_label(
+    lines: Sequence[dict],
+    size: Tuple[int, int],
+    bbox: Tuple[float, float, float, float],
+    pad_x: float = 0.04,
+    extend_up: float = 0.16,
+) -> List[dict]:
+    """Lines whose center sits on one shelf label, including the brand line above the panel."""
+
+    left, top, right, bottom = bbox
+    width, height = max(1, size[0]), max(1, size[1])
+    x0, x1 = left - pad_x, right + pad_x
+    y0, y1 = top - extend_up, bottom + 0.03
+    kept = []
+    for line in lines:
+        box = line.get("box") or []
+        if not box:
+            continue
+        cx = sum(float(point[0]) for point in box) / len(box) / width
+        cy = sum(float(point[1]) for point in box) / len(box) / height
+        if x0 <= cx <= x1 and y0 <= cy <= y1:
+            kept.append(line)
+    return kept
+
+
 def ocr_words(lines: Sequence[dict], size: Tuple[int, int]) -> List[Word]:
     """PP-OCR lines -> weighted words. Edge text keeps a fifth of its weight."""
 
