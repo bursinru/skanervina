@@ -8,7 +8,9 @@ from PIL import Image
 
 
 MODEL_ID = "PekingU/rtdetr_r18vd"
-MODEL_REVISION = "88f462f2350473029c7f938f14c9d2a565933e3f"
+# 88f462f shipped a ResNet-50 backbone config for ResNet-18 weights and failed
+# to load on transformers 4.57 (size mismatch); ac77a11 is the corrected config.
+MODEL_REVISION = "ac77a11ff0170a41b771c03264987f8ce2b0d753"
 DETECTION_THRESHOLD = 0.25
 
 

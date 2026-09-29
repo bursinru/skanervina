@@ -79,7 +79,7 @@ docker compose exec -T db pg_dump -U scanner -d scanner -Fc > scanner.dump
 
 - `GET /healthz` — каталог, хранилище, OCR, готовность CV.
 - `POST /v1/recognize` — multipart `image`, JPG/PNG/WebP до 15 MiB. Возвращает одну карточку при `matched` или `uncertain`; при `unknown` карточки нет. Сомнительный результат явно помечается в интерфейсе.
-- `POST /v1/eval/predict` — тот же поиск, ответ `{slug: string | null}`; сомнительные результаты остаются `null` для совместимости оценки.
+- `POST /v1/eval/predict` — тот же поиск, ответ `{"slug": "..."}`: всегда лучший кандидат, в том числе при `uncertain`.
 - `GET /v1/search?q=Фанагория` — до 20 кандидатов текстового поиска.
 - `GET /v1/catalog/{slug}` — карточка JSON.
 - `GET /v1/profile` — сохранения/оценки текущего браузера, выдаёт HttpOnly SameSite=Strict cookie.

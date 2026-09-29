@@ -22,7 +22,9 @@ from pathlib import Path
 _OCR_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix='label-ocr')
 # PP-OCR shares 4 cores with SigLIP; a 12 MP frame took 6-9 s to read.
 OCR_FRAME_SIDE = int(os.getenv('CV_OCR_FRAME_SIDE', '1280'))
-OCR_LABEL_SIDE = int(os.getenv('CV_OCR_LABEL_SIDE', '1024'))
+# Cropping to the detected bottle before search: on 107 shop and live photos it
+# fixed 7, broke 12 and cost ~0.6 s. The user-picked box (/v1/bottles) still works.
+BOTTLE_AUTO = os.getenv('CV_BOTTLE_AUTO', 'false').lower() == 'true'
 
 
 class Recognizer:
@@ -306,7 +308,9 @@ class Recognizer:
         selected_box = bottle_box
         selection_method = 'user' if bottle_box is not None else 'automatic'
         bottle_detection_ms = 0.0
-        if selected_box is None:
+        if selected_box is None and not BOTTLE_AUTO:
+            selection_method = 'label_fallback'
+        elif selected_box is None:
             bottle_started = perf_counter()
             bottle_result = self._detect_bottles_in_image(image)
             bottle_detection_ms = (perf_counter() - bottle_started) * 1000
@@ -563,16 +567,14 @@ class Recognizer:
         from .pp_ocr import line_text, read_lines
 
         started = perf_counter()
-        words, texts = [], []
-        views = [(label, OCR_LABEL_SIDE)] if label is frame else [(label, OCR_LABEL_SIDE), (frame, OCR_FRAME_SIDE)]
-        for image, side in views:
-            if max(image.size) > side:
-                image = image.copy()
-                image.thumbnail((side, side))
-            lines = read_lines(image)
-            words += ocr_words(lines, image.size)
-            texts.append(line_text(lines))
-        return words, ' | '.join(text for text in texts if text), (perf_counter() - started) * 1000
+        # The frame alone gave the same 157/205 as frame + label crop (the crop
+        # alone 144), so only the frame is read: half the OCR time.
+        image = frame
+        if max(image.size) > OCR_FRAME_SIDE:
+            image = image.copy()
+            image.thumbnail((OCR_FRAME_SIDE, OCR_FRAME_SIDE))
+        lines = read_lines(image)
+        return ocr_words(lines, image.size), line_text(lines), (perf_counter() - started) * 1000
 
     def _fused_result(self, label, frame, base_metrics, include_candidates, compare_slug):
         """SigLIP and PP-OCR in parallel, then the trained softmax over candidates."""

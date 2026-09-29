@@ -2,6 +2,8 @@
 
 Мобильный сканер: **Nuxt → Python (SigLIP 2 + OCR) → PostgreSQL / pgvector**. Запуск на сервере — Docker Compose из корня репозитория.
 
+**Всё главное в одном документе** — решение, стек, архитектура, точность и скорость, API, запуск и настройки: [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Сборка для организаторов
 
 Нужны Docker Desktop (или Docker Engine с Compose) и Node.js 20+. Каталог не входит в Git: скопируйте в `Датасет/` таблицу `strapi_output0709_enriched.csv` и фотографии в `prod-svoe-vino-strapi/prod-svoe-vino/strapi/uploads`. Дополнительные реальные фото уже лежат в `Датасет/extra-labels` — при копировании каталога оставьте эту папку.

@@ -398,7 +398,8 @@ def config():
     import json
     return Response("window.SCANNER_CONFIG = " + json.dumps({
         "recognitionEndpoint": "/v1/recognize", "bottleDetectionEndpoint": "/v1/bottles", "profileEndpoint": "/v1/profile", "recentScansEndpoint": "/v1/scans/recent",
-        "bottleDetectionEnabled": os.getenv('CV_ENABLED', 'false').lower() == 'true',
+        # Off by default: picking a bottle before search lost 5 of 107 labelled photos.
+        "bottleDetectionEnabled": os.getenv('CV_ENABLED', 'false').lower() == 'true' and os.getenv('CV_BOTTLE_AUTO', 'false').lower() == 'true',
         "imageBaseUrl": settings.image_base_url,
     }) + ";", media_type="text/javascript")
 
