@@ -3,3 +3,5 @@ psycopg[binary]>=3.2,<4
 transformers==4.57.1
 torch>=2.6,<3
 safetensors>=0.4,<1
+rapidocr>=3.5,<4
+onnxruntime>=1.17,<2

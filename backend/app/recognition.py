@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .catalog import WineCatalog, normalize
 from .label_detection import LabelDetection, crop_front_design, crop_label, crop_quality, detect_label, enhance_label, label_rgb
-from .label_signals import blend_candidates, crop_color_features
+from .label_signals import blend_candidates, crop_color_features, prefer_distinctive_label
 from .ranking import distinct_margin, is_visual_match, ranking_metrics, same_label_family
 from .recommend import alternatives as recommend_alternatives
 from .settings import Settings
@@ -81,6 +81,45 @@ class Recognizer:
             return text.strip(), "ok"
         except Exception:
             return "", "failed"
+
+    def _read_sibling(self, image) -> Tuple[str, str, list]:
+        """PP-OCRv5 for a close series pair. Tesseract covers a missing model."""
+
+        from .catalog import tokens
+        from .pp_ocr import line_text, read_lines
+
+        lines = read_lines(image)
+        text = line_text(lines)
+        cyrillic = [
+            word for word in tokens(text)
+            if len(word) >= 4 and any("а" <= character <= "я" or character == "ё" for character in word)
+        ]
+        if cyrillic:
+            return text, "ppocr", lines
+        fallback, status = self._ocr(self._image_bytes(image), psm=6)
+        return fallback, status, lines
+
+    def _prefer_grape_line(self, ranked, image, lines):
+        from .grape_lines import crop_quad, load_index, prefer_by_grape_score, select_query_line
+
+        index = load_index()
+        if not index or self.visual is None or not hasattr(self.visual, "score_grape_views"):
+            return ranked
+        slugs = []
+        leader_visual = float(ranked[0].get("siglip") or ranked[0].get("score") or 0.0) if ranked else 0.0
+        for row in ranked[:5]:
+            visual = float(row.get("siglip") or row.get("score") or 0.0)
+            if leader_visual - visual <= 0.06 and row.get("slug") in index:
+                slugs.append(row["slug"])
+        if len(slugs) < 2:
+            return ranked
+        wines = [self.catalog.get(slug) for slug in slugs]
+        box = select_query_line(lines, wines)
+        crop = crop_quad(image, box)
+        if crop is None:
+            return ranked
+        scores = self.visual.score_grape_views(crop, {slug: index[slug] for slug in slugs})
+        return prefer_by_grape_score(ranked, scores)
 
     @staticmethod
     def _decode_image(image_bytes: bytes):
@@ -352,14 +391,29 @@ class Recognizer:
             # A high embedding score cannot validate a failed label detection.
             if mode != "image_full" and not quality['usable']:
                 matched = False
-            run_ocr = ocr_allowed and not matched
+            # A close sibling (Rubin vs Pinot on one series) is already a visual
+            # winner, so the grape word on the label would otherwise never be read.
+            sibling_gap = float(best["score"]) - float(ranked[1]["score"]) if len(ranked) > 1 else 1.0
+            close_sibling = family_tie and sibling_gap <= 0.06
+            run_ocr = ocr_allowed and (not matched or close_sibling)
             corroborated = False
             if run_ocr:
                 ocr_started = perf_counter()
-                text, ocr_status = self._ocr(self._image_bytes(work_image), psm=6)
+                if close_sibling:
+                    text, ocr_status, lines = self._read_sibling(work_image)
+                else:
+                    text, ocr_status = self._ocr(self._image_bytes(work_image), psm=6)
+                    lines = []
                 ocr_ms = (perf_counter() - ocr_started) * 1000
                 text_matches = self._text_matches(text)
-                ranked = blend_candidates(candidates, self.catalog, color_features, text, True, self.ocr_references)
+                if matched and close_sibling:
+                    # The visual winner is already a card. OCR may name the
+                    # sibling grape, and must not reshuffle the rest of the list.
+                    ranked = prefer_distinctive_label(ranked, self.catalog, text)
+                    ranked = self._prefer_grape_line(ranked, work_image, lines)
+                else:
+                    ranked = blend_candidates(candidates, self.catalog, color_features, text, True, self.ocr_references)
+                    ranked = prefer_distinctive_label(ranked, self.catalog, text)
                 best = ranked[0]
                 wine = self.catalog.get(best['slug'])
                 runner = self.catalog.get(ranked[1]['slug']) if len(ranked) > 1 else None

@@ -13,8 +13,11 @@ from .label_detection import crop_label, detect_label, label_rgb
 
 EXTRA_SUFFIXES = {'.jpg', '.jpeg', '.png', '.webp'}
 CROP_AREA_MAX = 0.92
-
-EXTRA_SUFFIXES = {'.jpg', '.jpeg', '.png', '.webp'}
+# Field shots of this bottle (a hand, a shop shelf, a curtain) outrank unrelated
+# queries. The studio catalog photo stays in the index.
+SKIP_EXTRA_SLUGS = {
+    'massandra-muskatel-belyy-belye-sorta-vinograda-beloe-sladkoe-16',
+}
 
 
 def extra_files(root: Path, slug: str) -> list:
@@ -171,7 +174,7 @@ def main():
                 extra = extra.resolve()
                 if extra.is_relative_to(root) and extra.is_file() and extra not in files:
                     files.append(extra)
-        if extra_root:
+        if extra_root and wine.slug not in SKIP_EXTRA_SLUGS:
             files.extend(path for path in extra_files(extra_root, wine.slug) if path not in files)
         if not files:
             missing.append(wine.slug)

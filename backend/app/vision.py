@@ -214,3 +214,34 @@ class VisualSearch:
             'crop_score': None if crop_score is None else round(crop_score, 4),
             'best_view': best_view,
         }
+
+    def score_grape_views(self, image, hashes_by_slug):
+        """Cosine of a grape-line crop against the stored line of each sibling."""
+
+        from .database import connect
+        from .grape_lines import grape_model
+
+        if not hashes_by_slug:
+            return {}
+        vectors = [(MODEL_ID, self.encoder.encode([image])[0])]
+        if self.secondary is not None:
+            vectors.append((SECONDARY_MODEL_ID, self.secondary.encode([image])[0]))
+        found = {slug: [] for slug in hashes_by_slug}
+        with connect() as db:
+            for model, vector in vectors:
+                rows = db.execute(
+                    '''
+                    SELECT slug, image_hash, 1 - (embedding <=> %s::vector) AS score
+                    FROM wine_embeddings
+                    WHERE model = %s AND slug = ANY(%s)
+                    ''',
+                    (str(vector), grape_model(model), list(hashes_by_slug)),
+                ).fetchall()
+                for row in rows:
+                    if row['image_hash'] == hashes_by_slug.get(row['slug']):
+                        found[row['slug']].append(float(row['score']))
+        return {
+            slug: sum(values) / len(values)
+            for slug, values in found.items()
+            if values
+        }

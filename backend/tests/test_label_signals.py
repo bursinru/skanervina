@@ -142,3 +142,86 @@ class LabelColorTests(unittest.TestCase):
             False,
         )
         self.assertEqual(ranked[0]["slug"], "flamingo")
+
+
+class SiblingLabelTests(unittest.TestCase):
+    def catalog(self):
+        return WineCatalog.from_rows(
+            [
+                {
+                    "Slug": "pinot",
+                    "Название вина": "Пино Нуар кларет. Красная стрелка",
+                    "Винодельня": "Denisov Winery",
+                    "Сорт винограда": "Пино Нуар",
+                },
+                {
+                    "Slug": "rubin",
+                    "Название вина": "Рубин кларет . Красная стрелка",
+                    "Винодельня": "Denisov Winery",
+                    "Сорт винограда": "Рубин Голодриги",
+                },
+                {
+                    "Slug": "sweet",
+                    "Название вина": "Русское Игристое полусладкое",
+                    "Винодельня": "Абрау-Дюрсо",
+                },
+                {
+                    "Slug": "semidry",
+                    "Название вина": "Русское Игристое полусухое розовое",
+                    "Винодельня": "Абрау-Дюрсо",
+                },
+            ],
+            "https://example.com/",
+        )
+
+    def test_rubin_on_the_label_passes_the_closer_pinot(self):
+        from app.label_signals import prefer_distinctive_label
+
+        ranked = prefer_distinctive_label(
+            [
+                {"slug": "pinot", "score": 0.8457, "siglip": 0.8457},
+                {"slug": "rubin", "score": 0.8016, "siglip": 0.8016},
+            ],
+            self.catalog(),
+            "Denisov Рубин кларет красная стрелка",
+        )
+        self.assertEqual(ranked[0]["slug"], "rubin")
+
+    def test_a_wide_gap_keeps_the_visual_leader(self):
+        from app.label_signals import prefer_distinctive_label
+
+        ranked = prefer_distinctive_label(
+            [
+                {"slug": "pinot", "score": 0.90, "siglip": 0.90},
+                {"slug": "rubin", "score": 0.80, "siglip": 0.80},
+            ],
+            self.catalog(),
+            "Рубин кларет",
+        )
+        self.assertEqual(ranked[0]["slug"], "pinot")
+
+    def test_shared_series_words_do_not_move_the_leader(self):
+        from app.label_signals import prefer_distinctive_label
+
+        ranked = prefer_distinctive_label(
+            [
+                {"slug": "pinot", "score": 0.84, "siglip": 0.84},
+                {"slug": "rubin", "score": 0.81, "siglip": 0.81},
+            ],
+            self.catalog(),
+            "кларет красная стрелка",
+        )
+        self.assertEqual(ranked[0]["slug"], "pinot")
+
+    def test_sweetness_word_selects_the_sibling(self):
+        from app.label_signals import prefer_distinctive_label
+
+        ranked = prefer_distinctive_label(
+            [
+                {"slug": "sweet", "score": 0.82, "siglip": 0.82},
+                {"slug": "semidry", "score": 0.79, "siglip": 0.79},
+            ],
+            self.catalog(),
+            "Абрау игристое полусухое",
+        )
+        self.assertEqual(ranked[0]["slug"], "semidry")

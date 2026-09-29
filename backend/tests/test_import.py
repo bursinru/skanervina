@@ -33,6 +33,13 @@ class ImportTests(unittest.TestCase):
             override.mkdir()
             self.assertEqual(resolve_extra_images(catalog, override), override)
 
+    def test_massandra_field_photos_are_not_extra_indexed(self):
+        from app.import_catalog import SKIP_EXTRA_SLUGS
+        self.assertIn(
+            'massandra-muskatel-belyy-belye-sorta-vinograda-beloe-sladkoe-16',
+            SKIP_EXTRA_SLUGS,
+        )
+
     def test_extra_files_only_images_in_slug_folder(self):
         from app.import_catalog import extra_files
         with tempfile.TemporaryDirectory() as directory:

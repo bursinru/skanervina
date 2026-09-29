@@ -1,6 +1,6 @@
 """Cheap label-color and OCR extras on top of SigLIP cosine scores."""
 
-from typing import Any, Dict, Mapping, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence, Set
 from difflib import SequenceMatcher
 
 import numpy as np
@@ -121,6 +121,51 @@ def crop_color_features(image: Image.Image) -> Dict[str, Any]:
 
 def color_delta(features: Mapping[str, Any], wine: Optional[CatalogWine]) -> float:
     return 0.0
+
+
+SWEETNESS = {"сухое", "полусухое", "полусладкое", "сладкое", "брют"}
+SIBLING_GAP = 0.06
+
+
+def _label_markers(wine: Optional[CatalogWine]) -> Set[str]:
+    """Words that can separate two bottles of one series: grape, style, sweetness."""
+
+    if wine is None:
+        return set()
+    words = tokens(f"{wine.name} {wine.category} {' '.join(wine.grapes)}")
+    return {word for word in words if len(word) >= 4 and word not in OCR_STOP} | (words & SWEETNESS)
+
+
+def prefer_distinctive_label(rows: list, catalog, ocr_text: str, max_gap: float = SIBLING_GAP) -> list:
+    """If the label names the sibling's grape or sweetness, put that sibling first.
+
+    Only a close pair from the same producer can move. A word printed on both
+    labels, or a wide visual gap, leaves the embedding order alone.
+    """
+
+    from .ranking import same_label_family
+
+    if len(rows) < 2 or not ocr_text:
+        return rows
+    seen = tokens(ocr_text)
+    if not seen:
+        return rows
+    leader = rows[0]
+    leader_visual = float(leader.get("siglip") or leader.get("score") or 0.0)
+    leader_wine = catalog.get(leader.get("slug")) if catalog is not None else None
+    for other in rows[1:5]:
+        other_visual = float(other.get("siglip") or other.get("score") or 0.0)
+        if leader_visual - other_visual > max_gap:
+            continue
+        other_wine = catalog.get(other.get("slug")) if catalog is not None else None
+        if not same_label_family(leader_wine, other_wine):
+            continue
+        leader_only = _label_markers(leader_wine) - _label_markers(other_wine)
+        other_only = _label_markers(other_wine) - _label_markers(leader_wine)
+        if (other_only & seen) and not (leader_only & seen):
+            rest = [row for row in rows if row.get("slug") != other.get("slug")]
+            return [other] + rest
+    return rows
 
 
 def ocr_delta(text: str, wine: Optional[CatalogWine], reference_text: str = "") -> float:
