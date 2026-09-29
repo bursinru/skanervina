@@ -20,6 +20,9 @@ from pathlib import Path
 
 # PP-OCR of a query runs next to SigLIP encoding.
 _OCR_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix='label-ocr')
+# PP-OCR shares 4 cores with SigLIP; a 12 MP frame took 6-9 s to read.
+OCR_FRAME_SIDE = int(os.getenv('CV_OCR_FRAME_SIDE', '1280'))
+OCR_LABEL_SIDE = int(os.getenv('CV_OCR_LABEL_SIDE', '1024'))
 
 
 class Recognizer:
@@ -561,7 +564,11 @@ class Recognizer:
 
         started = perf_counter()
         words, texts = [], []
-        for image in ([label] if label is frame else [label, frame]):
+        views = [(label, OCR_LABEL_SIDE)] if label is frame else [(label, OCR_LABEL_SIDE), (frame, OCR_FRAME_SIDE)]
+        for image, side in views:
+            if max(image.size) > side:
+                image = image.copy()
+                image.thumbnail((side, side))
             lines = read_lines(image)
             words += ocr_words(lines, image.size)
             texts.append(line_text(lines))

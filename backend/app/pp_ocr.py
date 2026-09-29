@@ -1,6 +1,7 @@
 """PP-OCRv5 for the grape line. Tesseract stays the fallback."""
 
 import logging
+import os
 from threading import Lock
 from typing import Any, List
 
@@ -52,6 +53,8 @@ def _engine():
                 "Rec.lang_type": LangRec.ESLAV,
                 "Rec.model_type": ModelType.MOBILE,
                 "Rec.ocr_version": OCRVersion.PPOCRV5,
+                # SigLIP encodes at the same time; sharing all 4 cores made both 2-3x slower.
+                "EngineConfig.onnxruntime.intra_op_num_threads": int(os.getenv("CV_OCR_THREADS", "2")),
             }
         )
     except Exception:
